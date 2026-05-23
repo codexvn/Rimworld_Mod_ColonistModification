@@ -55,6 +55,73 @@ namespace ColonistModification
         public static bool CanPerformSurgery(Pawn pawn, RecipeDef recipe, Map map)
             => CheckSurgeryConditions(pawn, recipe, map).can;
 
+        /// <summary>
+        /// 预计算每个配方的药品和材料可用性（不含 reservedThings），跨 pawn 共享。
+        /// </summary>
+        public static Dictionary<string, (bool medicine, bool materials)> BuildMaterialCache(
+            Map map, IEnumerable<RecipeDef> recipes)
+        {
+            var cache = new Dictionary<string, (bool, bool)>();
+            foreach (var recipe in recipes)
+            {
+                if (recipe == null || cache.ContainsKey(recipe.defName)) continue;
+                bool med = HasRequiredMedicine(recipe, map, null);
+                bool mat = HasRequiredMaterials(recipe, map, null);
+                cache[recipe.defName] = (med, mat);
+            }
+            return cache;
+        }
+
+        /// <summary>
+        /// 快速条件检查：pawn 特异项 + materialCache 共享项。跳过 AllThings 遍历。
+        /// reservedThings 有内容时对材料做实时检查（罕见情况）。
+        /// </summary>
+        public static (bool can, string reason) CheckSurgeryConditionsFast(Pawn pawn, RecipeDef recipe, Map map,
+            Dictionary<string, (bool medicine, bool materials)> materialCache,
+            HashSet<Thing> reservedThings = null)
+        {
+            if (pawn == null || recipe == null || map == null)
+                return (false, "无效参数");
+            if (pawn.Dead)
+                return (false, "殖民者已死亡");
+            if (!pawn.Spawned)
+                return (false, "殖民者不在当前地图");
+            if (recipe.Worker == null)
+                return (false, "手术定义无效");
+
+            var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
+            if (parts == null || !parts.Any())
+                return (false, "无可用的身体部位");
+
+            if (!recipe.Worker.AvailableOnNow(pawn, null))
+                return (false, "手术当前不可用");
+
+            if (!HasAvailableSurgeon(recipe, map))
+                return (false, "无可用医生（需满足技能且非倒地/失控）");
+
+            if (materialCache.TryGetValue(recipe.defName, out var cached))
+            {
+                if (!cached.medicine)
+                    return (false, "缺少所需药品");
+                if (!cached.materials)
+                {
+                    if (reservedThings == null || reservedThings.Count == 0)
+                        return (false, "缺少手术所需材料");
+                    if (!HasRequiredMaterials(recipe, map, reservedThings))
+                        return (false, "缺少手术所需材料");
+                }
+            }
+            else
+            {
+                if (!HasRequiredMedicine(recipe, map, pawn))
+                    return (false, "缺少所需药品");
+                if (!HasRequiredMaterials(recipe, map, reservedThings))
+                    return (false, "缺少手术所需材料");
+            }
+
+            return (true, null);
+        }
+
         public static bool HasAvailableSurgeon(RecipeDef recipe, Map map)
         {
             if (recipe.workSkill == null) return true;

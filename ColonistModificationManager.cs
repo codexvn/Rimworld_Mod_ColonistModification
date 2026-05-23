@@ -127,16 +127,17 @@ namespace ColonistModification
             var templates = AllTemplates.ToList();
             RefreshPawnCache();
 
-            // Pre-compute once: active mod bill count + eligible doctors per map
+            // === Pass 1: count mod patients + build doctor pool + collect unique recipes ===
             var modPatientIds = new HashSet<int>();
             int activeSurgeryCount = 0;
             var doctorPool = new Dictionary<Map, List<Pawn>>();
+            var allRecipes = new HashSet<RecipeDef>();
 
             foreach (Map map in Find.Maps)
             {
                 if (!map.IsPlayerHome) continue;
 
-                // Count mod patients across ALL pawns (colonists + prisoners)
+                var doctors = new List<Pawn>();
                 foreach (Pawn p in map.mapPawns.FreeColonistsAndPrisoners)
                 {
                     if (HasActiveModificationBill(p))
@@ -144,12 +145,7 @@ namespace ColonistModification
                         modPatientIds.Add(p.thingIDNumber);
                         activeSurgeryCount++;
                     }
-                }
-
-                // Build doctor pool: only free colonists who can operate
-                var doctors = new List<Pawn>();
-                foreach (Pawn p in map.mapPawns.FreeColonists)
-                {
+                    if (!p.IsFreeColonist) continue;
                     if (!p.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation)) continue;
                     if (p.Downed || p.InMentalState) continue;
                     doctors.Add(p);
@@ -157,14 +153,33 @@ namespace ColonistModification
                 doctorPool[map] = doctors;
             }
 
+            // Collect unique recipes from assigned templates
+            foreach (var t in templates)
+            {
+                if (disabledTemplates.Contains(t.id)) continue;
+                foreach (var r in t.resolvedRecipes)
+                    allRecipes.Add(r);
+            }
+
+            // === Pass 2: precompute material cache per map (single AllThings scan per recipe) ===
+            var materialCaches = new Dictionary<Map, Dictionary<string, (bool medicine, bool materials)>>();
+            foreach (Map map in Find.Maps)
+            {
+                if (!map.IsPlayerHome) continue;
+                materialCaches[map] = ColonistModificationUtility.BuildMaterialCache(map, allRecipes);
+            }
+
             var reservedThings = new HashSet<Thing>();
 
+            // === Pass 3: process each pawn ===
             foreach (Map map in Find.Maps)
             {
                 if (!map.IsPlayerHome) continue;
 
                 var pawns = map.mapPawns.FreeColonistsAndPrisoners.ToList();
                 var eligibleDoctors = doctorPool.TryGetValue(map, out var d) ? d : new List<Pawn>();
+                var matCache = materialCaches.TryGetValue(map, out var mc) ? mc
+                    : new Dictionary<string, (bool, bool)>();
 
                 foreach (Pawn pawn in pawns)
                 {
@@ -202,8 +217,8 @@ namespace ColonistModification
 
                             foreach (var recipe in pendingRecipes)
                             {
-                                var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(
-                                    pawn, recipe, pawn.Map, reservedThings);
+                                var (can, reason) = ColonistModificationUtility.CheckSurgeryConditionsFast(
+                                    pawn, recipe, pawn.Map, matCache, reservedThings);
                                 if (can)
                                 {
                                     firstReady = recipe;
