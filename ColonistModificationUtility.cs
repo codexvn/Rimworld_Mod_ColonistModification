@@ -17,21 +17,42 @@ namespace ColonistModification
             return true;
         }
 
-        public static bool CanPerformSurgery(Pawn pawn, RecipeDef recipe, Map map)
+        /// <summary>
+        /// 检查手术条件，返回 (是否满足, 失败原因)。
+        /// </summary>
+        public static (bool can, string reason) CheckSurgeryConditions(Pawn pawn, RecipeDef recipe, Map map)
         {
-            if (pawn == null || recipe == null || map == null) return false;
-            if (pawn.Dead || !pawn.Spawned) return false;
-            if (recipe.Worker == null) return false;
+            if (pawn == null || recipe == null || map == null)
+                return (false, "无效参数");
+            if (pawn.Dead)
+                return (false, "殖民者已死亡");
+            if (!pawn.Spawned)
+                return (false, "殖民者不在当前地图");
+            if (recipe.Worker == null)
+                return (false, "手术定义无效");
 
             var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
-            if (parts == null || !parts.Any()) return false;
-            if (!recipe.Worker.AvailableOnNow(pawn, null)) return false;
-            if (!HasAvailableSurgeon(recipe, map)) return false;
-            if (!HasRequiredMedicine(recipe, map, pawn)) return false;
-            if (!HasRequiredMaterials(recipe, map)) return false;
+            if (parts == null || !parts.Any())
+                return (false, "无可用的身体部位");
 
-            return true;
+            if (!recipe.Worker.AvailableOnNow(pawn, null))
+                return (false, "手术当前不可用");
+
+            if (!HasAvailableSurgeon(recipe, map))
+                return (false, "无可用医生（需满足技能且非倒地/失控）");
+
+            if (!HasRequiredMedicine(recipe, map, pawn))
+                return (false, "缺少所需药品");
+
+            if (!HasRequiredMaterials(recipe, map))
+                return (false, "缺少手术所需材料");
+
+            return (true, null);
         }
+
+        /// <summary>保留旧接口兼容</summary>
+        public static bool CanPerformSurgery(Pawn pawn, RecipeDef recipe, Map map)
+            => CheckSurgeryConditions(pawn, recipe, map).can;
 
         public static bool HasAvailableSurgeon(RecipeDef recipe, Map map)
         {
@@ -158,21 +179,16 @@ namespace ColonistModification
         public static bool HasCompletedTemplate(Pawn pawn, UserTemplate template)
         {
             if (pawn == null || template == null) return false;
-
             var record = ColonistModificationManager.Instance?.GetRecord(pawn, template);
-            for (int i = 0; i < template.resolvedRecipes.Count; i++)
+            if (record != null && record.completedRecipeDefNames.Count >= template.StepCount)
+                return true;
+            // Fallback: check hediffs
+            foreach (var recipe in template.resolvedRecipes)
             {
-                if (record != null && i <= record.lastCompletedStepIndex) continue;
-                var recipe = template.resolvedRecipes[i];
-                if (recipe.addsHediff != null)
-                {
-                    if (!pawn.health.hediffSet.HasHediff(recipe.addsHediff))
-                        return false;
-                }
-                else
-                {
+                if (record != null && record.completedRecipeDefNames.Contains(recipe.defName))
+                    continue;
+                if (recipe.addsHediff != null && !pawn.health.hediffSet.HasHediff(recipe.addsHediff))
                     return false;
-                }
             }
             return true;
         }
@@ -182,17 +198,10 @@ namespace ColonistModification
             var record = ColonistModificationManager.Instance?.GetRecord(pawn, template);
             for (int i = 0; i < template.resolvedRecipes.Count; i++)
             {
-                if (record != null && i <= record.lastCompletedStepIndex) continue;
                 var recipe = template.resolvedRecipes[i];
-                if (recipe.addsHediff != null)
-                {
-                    if (!pawn.health.hediffSet.HasHediff(recipe.addsHediff))
-                        return i;
-                }
-                else
-                {
-                    return i;
-                }
+                if (record != null && record.completedRecipeDefNames.Contains(recipe.defName))
+                    continue;
+                return i;
             }
             return -1;
         }
