@@ -146,12 +146,6 @@ namespace ColonistModification
             bill.currentStepIndex = stepIndex;
             bill.retryCount = retryCount;
 
-            if (recipe.targetsBodyPart)
-            {
-                var parts = recipe.Worker.GetPartsToApplyOn(patient, recipe);
-                var bestPart = parts?.FirstOrDefault();
-                if (bestPart != null) bill.Part = bestPart;
-            }
 
             if (recipe.defName == "ImplantXenogerm" && ModsConfig.BiotechActive)
                 TryBindXenogerm(bill, patient);
@@ -187,11 +181,20 @@ namespace ColonistModification
             for (int i = 0; i < template.resolvedRecipes.Count; i++)
             {
                 var recipe = template.resolvedRecipes[i];
-                if (record != null && record.completedRecipeDefNames.Contains(recipe.defName))
-                    continue;
+                if (IsRecipeFullyComplete(pawn, recipe, record)) continue;
                 return i;
             }
             return -1;
+        }
+
+        private static bool IsRecipeFullyComplete(Pawn pawn, RecipeDef recipe, PawnModificationRecord record)
+        {
+            if (record == null) return false;
+            if (!recipe.targetsBodyPart)
+                return record.completedRecipeKeys.Contains(recipe.defName);
+            var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
+            if (parts == null || !parts.Any()) return false;
+            return parts.All(p => record.completedRecipeKeys.Contains($"{recipe.defName}|{p.LabelCap}"));
         }
 
         public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup(BodyDef bodyDef = null)

@@ -95,7 +95,7 @@ namespace ColonistModification
             // ---- 根据结果处理后续流程 ----
             if (surgerySucceeded)
             {
-                OnSurgerySucceeded(patient, currentTemplate, currentTemplateId, stepIndex, stack);
+                OnSurgerySucceeded(patient, currentTemplate, currentTemplateId, stepIndex, stack, operatedPart);
             }
             else
             {
@@ -103,12 +103,12 @@ namespace ColonistModification
             }
         }
 
-        private void OnSurgerySucceeded(Pawn patient, UserTemplate template, string templateId, int stepIndex, BillStack stack)
+        private void OnSurgerySucceeded(Pawn patient, UserTemplate template, string templateId, int stepIndex, BillStack stack, BodyPartRecord operatedPart)
         {
             if (template == null)
                 return;
 
-            ColonistModificationManager.Instance?.NotifyStepCompleted(patient, template, stepIndex);
+            ColonistModificationManager.Instance?.NotifyStepCompleted(patient, template, stepIndex, operatedPart?.LabelCap);
 
             int nextStep = ColonistModificationUtility.GetNextStepIndex(patient, template);
 
@@ -157,21 +157,19 @@ namespace ColonistModification
                 retryBill.template = template;
                 retryBill.currentStepIndex = stepIndex;
                 retryBill.retryCount = currentRetryCount + 1;
-                if (part != null)
-                {
-                    retryBill.Part = part;
-                }
-                // 复制xenogerm引用（如果是异种胚植入手术）
                 if (boundXenogerm != null)
                 {
                     retryBill.xenogerm = boundXenogerm;
                 }
-                // 复制独特的必需材料
                 if (this.uniqueRequiredIngredients != null)
                 {
                     retryBill.uniqueRequiredIngredients = new List<Thing>(this.uniqueRequiredIngredients);
                 }
                 stack.AddBill(retryBill);
+                if (part != null)
+                {
+                    retryBill.Part = part;
+                }
 
                 // 发送提示消息
                 Messages.Message(
@@ -190,7 +188,7 @@ namespace ColonistModification
                     new LookTargets(patient), MessageTypeDefOf.NegativeEvent, false);
 
                 // 通知Manager该步骤失败，并标记为已完成（跳过）以免GetNextStepIndex返回同一步骤
-                ColonistModificationManager.Instance?.NotifyStepFailed(patient, template, stepIndex);
+                ColonistModificationManager.Instance?.NotifyStepFailed(patient, template, stepIndex, part?.LabelCap);
 
                 // 尝试推进到下一步
                 int nextStep = ColonistModificationUtility.GetNextStepIndex(patient, template);

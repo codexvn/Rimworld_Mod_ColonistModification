@@ -194,8 +194,10 @@ namespace ColonistModification
 
                     if (record != null && assigned != null)
                     {
-                        int completed = record.completedRecipeDefNames?.Count ?? 0;
-                        statusLine = $"{GetStatusLabel(record)}  ({completed}/{assigned.StepCount})";
+                        int completed = record.completedRecipeKeys?.Count ?? 0;
+                        int total = Manager.GetAllRecipeItems(pawn, assigned).Count;
+                        int remaining = total - completed;
+                        statusLine = $"{GetStatusLabel(record)}  已完成{completed} 未完成{remaining} (共{total}台手术)";
 
                         if (!string.IsNullOrEmpty(record.conditionFailReason))
                             tooltip = record.conditionFailReason.TrimEnd();
@@ -229,7 +231,7 @@ namespace ColonistModification
                 return;
             }
 
-            var pendingPawns = new List<(Pawn pawn, UserTemplate template, PawnModificationRecord record, List<RecipeDef> recipes)>();
+            var pendingPawns = new List<(Pawn pawn, UserTemplate template, PawnModificationRecord record, List<ColonistModificationManager.PendingRecipeItem> items)>();
 
             foreach (Map map in Find.Maps)
             {
@@ -241,11 +243,9 @@ namespace ColonistModification
                     if (tpl == null) continue;
                     var record = Manager.GetRecord(pawn, tpl);
 
-                    var pending = tpl.resolvedRecipes
-                        .Where(r => record == null || !record.completedRecipeDefNames.Contains(r.defName))
-                        .ToList();
-                    if (pending.Count > 0)
-                        pendingPawns.Add((pawn, tpl, record, pending));
+                    var items = Manager.GetPendingRecipeItems(pawn, tpl);
+                    if (items.Count > 0)
+                        pendingPawns.Add((pawn, tpl, record, items));
                 }
             }
 
@@ -261,46 +261,42 @@ namespace ColonistModification
             float rowH = 22f;
             Color pendingBg = new Color(0.4f, 0.6f, 1f, 0.1f);
 
-            foreach (var (pawn, template, record, recipes) in pendingPawns)
+            foreach (var (pawn, template, record, items) in pendingPawns)
             {
-                // pawn header
                 Widgets.Label(new Rect(0f, y, w, 22f), $"<b>{pawn.LabelShort}</b>  —  {template.name}");
                 y += 24f;
 
-                foreach (var recipe in recipes)
+                foreach (var item in items)
                 {
                     Widgets.DrawBoxSolid(new Rect(10f, y, w - 10f, rowH), pendingBg);
 
                     string failReason = null;
                     bool hasCache = record != null
-                        && record.recipeStatus.TryGetValue(recipe.defName, out failReason);
+                        && record.recipeStatus.TryGetValue(item.Key, out failReason);
                     bool can = hasCache && failReason == null;
 
-                    if (can)
+                    bool isHasBill = hasCache && failReason == "__HAS_BILL__";
+                    if (isHasBill)
                     {
-                        bool alreadyHasBill = Manager.HasModificationBillForRecipe(pawn, template, recipe);
-                        if (alreadyHasBill)
+                        GUI.color = new Color(0.4f, 0.6f, 1f);
+                        Widgets.Label(new Rect(18f, y + 1f, w - 18f, 20f), $"◯ {item.Label} — 已添加手术单");
+                        GUI.color = Color.white;
+                    }
+                    else if (can)
+                    {
+                        GUI.color = Color.green;
+                        Widgets.Label(new Rect(18f, y + 1f, w * 0.55f, 20f), $"◯ {item.Label} — 条件满足");
+                        GUI.color = Color.white;
+                        if (Widgets.ButtonText(new Rect(w - 90f, y + 1f, 80f, 20f), "添加"))
                         {
-                            GUI.color = new Color(0.4f, 0.6f, 1f);
-                            Widgets.Label(new Rect(18f, y + 1f, w - 18f, 20f), $"◯ {recipe.label} — 已添加手术单");
-                            GUI.color = Color.white;
-                        }
-                        else
-                        {
-                            GUI.color = Color.green;
-                            Widgets.Label(new Rect(18f, y + 1f, w * 0.55f, 20f), $"◯ {recipe.label} — 条件满足");
-                            GUI.color = Color.white;
-                            if (Widgets.ButtonText(new Rect(w - 90f, y + 1f, 80f, 20f), "添加"))
-                            {
-                                Manager.AddSurgeryForRecipe(pawn, template, recipe);
-                            }
+                            Manager.AddSurgeryForRecipe(pawn, template, item.recipe, item.part);
                         }
                     }
                     else
                     {
                         GUI.color = Color.gray;
                         string status = hasCache ? $" — {failReason}" : "";
-                        Widgets.Label(new Rect(18f, y + 1f, w * 0.7f, 20f), $"◯ {recipe.label}{status}");
+                        Widgets.Label(new Rect(18f, y + 1f, w * 0.7f, 20f), $"◯ {item.Label}{status}");
                         GUI.color = Color.white;
                     }
 
@@ -352,19 +348,21 @@ namespace ColonistModification
                 Widgets.Label(new Rect(0f, y, w, 22f), $"<b>{pawn.LabelShort}</b>  —  {template.name}");
                 y += 24f;
 
-                foreach (var recipe in template.resolvedRecipes)
+                var allItems = Manager.GetAllRecipeItems(pawn, template);
+                foreach (var item in allItems)
                 {
-                    bool done = record != null && record.completedRecipeDefNames.Contains(recipe.defName);
+                    bool done = record != null
+                        && record.completedRecipeKeys.Contains(item.Key);
                     if (done)
                     {
                         GUI.color = new Color(0.3f, 0.8f, 0.3f);
-                        Widgets.Label(new Rect(18f, y + 1f, w - 18f, 20f), $"✓ {recipe.label}");
+                        Widgets.Label(new Rect(18f, y + 1f, w - 18f, 20f), $"✓ {item.Label}");
                         GUI.color = Color.white;
                     }
                     else
                     {
                         GUI.color = Color.gray;
-                        Widgets.Label(new Rect(18f, y + 1f, w - 18f, 20f), $"✗ {recipe.label}");
+                        Widgets.Label(new Rect(18f, y + 1f, w - 18f, 20f), $"✗ {item.Label}");
                         GUI.color = Color.white;
                     }
                     y += rowH + 2f;
@@ -709,14 +707,14 @@ namespace ColonistModification
                     var tpl = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
                     if (tpl == null) continue;
                     var record = Manager.GetRecord(pawn, tpl);
-                    foreach (var recipe in tpl.resolvedRecipes)
+                    var items = Manager.GetPendingRecipeItems(pawn, tpl);
+                    foreach (var item in items)
                     {
-                        if (record != null && record.completedRecipeDefNames.Contains(recipe.defName)) continue;
-                        if (ColonistModificationUtility.CheckSurgeryConditions(pawn, recipe, pawn.Map, tpl.minMedicineCategory).can)
+                        if (ColonistModificationUtility.CheckSurgeryConditions(pawn, item.recipe, pawn.Map, tpl.minMedicineCategory).can)
                         {
-                            Manager.AddSurgeryForRecipe(pawn, tpl, recipe);
+                            Manager.AddSurgeryForRecipe(pawn, tpl, item.recipe, item.part);
                             count++;
-                            break; // 每人最多添加一个
+                            break;
                         }
                     }
                 }
