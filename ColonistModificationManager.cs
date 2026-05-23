@@ -68,6 +68,7 @@ namespace ColonistModification
 
         private int lastCheckTick = 0;
         private const int CheckIntervalTicks = 250;
+        private const int MaxConcurrentSurgeries = 1;
 
         private static readonly List<UserTemplate> EmptyTemplateList = new List<UserTemplate>();
 
@@ -135,7 +136,7 @@ namespace ColonistModification
 
         /// <summary>
         /// tick 循环入口：刷新缓存 → 基于缓存处理动作（弹窗/加手术）。
-        /// 每 tick 只弹一个确认窗，非确认模式下一个 tick 可加多台手术。
+        /// 每 tick 最多执行一个动作：确认窗一个，或加手术 MaxConcurrentSurgeries 台。
         /// </summary>
         private void CheckAllTemplates(int currentTick, bool actOnResults = true)
         {
@@ -149,7 +150,22 @@ namespace ColonistModification
 
             // 基于缓存处理动作
             var templates = AllTemplates.ToList();
-            bool confirmationShownThisTick = false;
+            var allRecipeDefs = new HashSet<RecipeDef>(templates.SelectMany(t => t.resolvedRecipes));
+            int activeSurgeries = 0;
+
+            // 统计当前已有手术单
+            foreach (Map map in Find.Maps)
+            {
+                if (!map.IsPlayerHome) continue;
+                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                {
+                    for (int i = 0; i < pawn.BillStack.Count; i++)
+                    {
+                        if (pawn.BillStack[i] is Bill_Medical bm && allRecipeDefs.Contains(bm.recipe))
+                            activeSurgeries++;
+                    }
+                }
+            }
 
             foreach (Map map in Find.Maps)
             {
@@ -207,8 +223,7 @@ namespace ColonistModification
 
                         if (template.requirePlayerConfirmation)
                         {
-                            if (confirmationShownThisTick) return;
-                            confirmationShownThisTick = true;
+                            if (activeSurgeries >= MaxConcurrentSurgeries) return;
                             record.status = ModificationStatus.PendingConfirmation;
                             var capturedPawn = pawn;
                             var capturedTemplate = template;
@@ -217,6 +232,7 @@ namespace ColonistModification
                                 $"殖民者 {pawn.LabelShort} 的改造方案「{template.name}」条件已满足。\n\n下一步手术: {capturedItem.Label}",
                                 "开始改造", () =>
                                 {
+                                    record.status = ModificationStatus.Idle;
                                     CreateAndAddBill(capturedPawn, capturedTemplate, capturedItem);
                                     RefreshAllCaches();
                                 },
@@ -228,10 +244,11 @@ namespace ColonistModification
                             return;
                         }
 
+                        if (activeSurgeries >= MaxConcurrentSurgeries) return;
                         CreateAndAddBill(pawn, template, item);
+                        activeSurgeries++;
                     }
 
-                    if (confirmationShownThisTick) return;
                 }
             }
         }
