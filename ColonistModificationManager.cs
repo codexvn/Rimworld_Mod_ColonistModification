@@ -79,6 +79,9 @@ namespace ColonistModification
         private List<UserTemplate> AllTemplates =>
             ColonistModificationMod.Instance?.settings?.templates ?? EmptyTemplateList;
 
+        private HashSet<string> ValidTemplateIds =>
+            new HashSet<string>(AllTemplates.Select(t => t.id));
+
         public ColonistModificationManager()
         {
             Instance = this;
@@ -93,32 +96,28 @@ namespace ColonistModification
 
         public void AssignTemplate(int pawnThingID, string templateId)
         {
-            if (!string.IsNullOrEmpty(templateId))
-            {
-                var tpl = GetTemplateById(templateId);
-                var pawn = FindPawnByID(pawnThingID);
-                if (tpl != null && pawn != null && !string.IsNullOrEmpty(tpl.targetBodyDefName)
-                    && pawn.RaceProps.body.defName != tpl.targetBodyDefName)
-                    return;
-            }
+            if (string.IsNullOrEmpty(templateId)) return;
+
+            var tpl = GetTemplateById(templateId);
+            var pawn = FindPawnByID(pawnThingID);
+            if (tpl != null && pawn != null && !string.IsNullOrEmpty(tpl.targetBodyDefName)
+                && pawn.RaceProps.body.defName != tpl.targetBodyDefName)
+                return;
+
             assignedTemplateIds[pawnThingID] = templateId;
             if (pawnRecords.TryGetValue(pawnThingID, out var records))
-            {
                 records.RemoveAll(r => r.templateId != templateId);
-            }
-            // 立即创建 record，避免等 tick 才显示数据
-            if (!string.IsNullOrEmpty(templateId))
-            {
-                var tpl = GetTemplateById(templateId);
-                var pawn = FindPawnByID(pawnThingID);
-                if (tpl != null && pawn != null && tpl.StepCount > 0)
-                    GetOrCreateRecord(pawn, tpl);
-            }
+            if (tpl != null && pawn != null && tpl.StepCount > 0)
+                GetOrCreateRecord(pawn, tpl);
+
+            RefreshAllCaches();
         }
 
         public void UnassignTemplate(int pawnThingID)
         {
             assignedTemplateIds.Remove(pawnThingID);
+            pawnRecords.Remove(pawnThingID);
+            RefreshAllCaches();
         }
 
         public string GetAssignedTemplateId(int pawnThingID)
@@ -504,7 +503,23 @@ namespace ColonistModification
         public void EnableTemplate(string id) => disabledTemplates.Remove(id);
         private void RefreshAllCaches()
         {
-            var templates = AllTemplates.ToList();
+            var mod = ColonistModificationMod.Instance;
+            var settings = mod?.settings;
+            if (settings != null)
+            {
+                bool needResolve = settings.templates.Any(t => t.resolvedRecipes.Count == 0 && t.recipeDefNames.Count > 0);
+                if (needResolve)
+                    settings.ResolveAllReferences();
+            }
+
+            var templates = settings?.templates;
+            int templateCount = templates?.Count ?? -1;
+
+            var templateList = templates != null ? templates.ToList() : new List<UserTemplate>();
+            int pawnsWithAssignment = 0;
+            int pawnsProcessed = 0;
+            int recipesChecked = 0;
+
             foreach (Map map in Find.Maps)
             {
                 if (!map.IsPlayerHome) continue;
@@ -512,8 +527,11 @@ namespace ColonistModification
                 {
                     var assignedId = GetAssignedTemplateId(pawn.thingIDNumber);
                     if (assignedId == null) continue;
-                    var template = templates.FirstOrDefault(t => t.id == assignedId);
+                    pawnsWithAssignment++;
+
+                    var template = templateList.FirstOrDefault(t => t.id == assignedId);
                     if (template == null || template.StepCount == 0) continue;
+                    pawnsProcessed++;
 
                     var record = GetOrCreateRecord(pawn, template);
                     var pendingRecipes = GetPendingRecipes(pawn, template, record);
@@ -521,6 +539,7 @@ namespace ColonistModification
 
                     foreach (var recipe in pendingRecipes)
                     {
+                        recipesChecked++;
                         if (HasModificationBillForRecipe(pawn, template, recipe))
                         {
                             record.recipeStatus[recipe.defName] = null;
@@ -534,6 +553,7 @@ namespace ColonistModification
                     }
                 }
             }
+
         }
 
         public void ForceCheckNow()
@@ -623,6 +643,16 @@ namespace ColonistModification
                     assignedTemplateIds[assignKeys[i]] = assignValues[i];
             }
             if (assignedTemplateIds == null) assignedTemplateIds = new Dictionary<int, string>();
+            if (Scribe.mode == LoadSaveMode.LoadingVars)
+            {
+                var validTplIds = ValidTemplateIds;
+                var invalid = assignedTemplateIds.Where(kvp => !validTplIds.Contains(kvp.Value)).Select(kvp => kvp.Key).ToList();
+                foreach (var pawnId in invalid)
+                {
+                    assignedTemplateIds.Remove(pawnId);
+                    pawnRecords.Remove(pawnId);
+                }
+            }
 
             Scribe_Collections.Look(ref disabledTemplates, "disabledTemplates", LookMode.Value);
             if (disabledTemplates == null) disabledTemplates = new HashSet<string>();

@@ -41,6 +41,12 @@ namespace ColonistModification
             this.soundClose = SoundDefOf.CommsWindow_Close;
         }
 
+        public override void PreOpen()
+        {
+            base.PreOpen();
+            Manager?.ForceCheckNow();
+        }
+
         public override Vector2 InitialSize => new Vector2(950f, 700f);
 
         public override void DoWindowContents(Rect inRect)
@@ -63,6 +69,21 @@ namespace ColonistModification
                 GUI.color = Color.white;
             }
 
+            // 底部按钮提前检测，确保刷新/添加在内容渲染之前执行
+            Rect bottomRect = new Rect(0f, inRect.height - 30f, inRect.width, 30f);
+            bool doRefresh = Widgets.ButtonText(new Rect(bottomRect.x, bottomRect.y, 120f, 28f), "刷新状态");
+            bool doAddAll = Widgets.ButtonText(new Rect(bottomRect.x + 130f, bottomRect.y, 160f, 28f), "一键添加全部可添加");
+            if (Widgets.ButtonText(new Rect(bottomRect.x + 300f, bottomRect.y, 100f, 28f), "关闭"))
+                this.Close(true);
+
+            if (doRefresh)
+            {
+                scrollPosition = Vector2.zero;
+                Manager?.ForceCheckNow();
+            }
+            if (doAddAll)
+                AddAllReady();
+
             Rect contentRect = new Rect(0f, 75f, inRect.width - 16f, inRect.height - 115f);
             cachedHeight = Mathf.Max(cachedHeight, contentRect.height);
             Rect viewRect = new Rect(0f, 0f, contentRect.width - 20f, cachedHeight);
@@ -78,17 +99,6 @@ namespace ColonistModification
             }
 
             Widgets.EndScrollView();
-
-            Rect bottomRect = new Rect(0f, inRect.height - 30f, inRect.width, 30f);
-            if (Widgets.ButtonText(new Rect(bottomRect.x, bottomRect.y, 120f, 28f), "刷新状态"))
-            {
-                scrollPosition = Vector2.zero;
-                Manager?.ForceCheckNow();
-            }
-            if (Widgets.ButtonText(new Rect(bottomRect.x + 130f, bottomRect.y, 160f, 28f), "一键添加全部可添加"))
-                AddAllReady();
-            if (Widgets.ButtonText(new Rect(bottomRect.x + 300f, bottomRect.y, 100f, 28f), "关闭"))
-                this.Close(true);
         }
 
         private static float LabelWithHeight(Rect rect, string text)
@@ -226,7 +236,8 @@ namespace ColonistModification
                 if (!map.IsPlayerHome) continue;
                 foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
                 {
-                    var tpl = Manager.GetAssignedTemplate(pawn);
+                    string assignedId = Manager.GetAssignedTemplateId(pawn.thingIDNumber);
+                    var tpl = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
                     if (tpl == null) continue;
                     var record = Manager.GetRecord(pawn, tpl);
 
@@ -317,7 +328,8 @@ namespace ColonistModification
                 if (!map.IsPlayerHome) continue;
                 foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
                 {
-                    var tpl = Manager.GetAssignedTemplate(pawn);
+                    string assignedId = Manager.GetAssignedTemplateId(pawn.thingIDNumber);
+                    var tpl = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
                     if (tpl == null) continue;
                     var record = Manager.GetRecord(pawn, tpl);
                     allPawns.Add((pawn, tpl, record));
@@ -693,7 +705,8 @@ namespace ColonistModification
                 if (!map.IsPlayerHome) continue;
                 foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
                 {
-                    var tpl = Manager.GetAssignedTemplate(pawn);
+                    string assignedId = Manager.GetAssignedTemplateId(pawn.thingIDNumber);
+                    var tpl = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
                     if (tpl == null) continue;
                     var record = Manager.GetRecord(pawn, tpl);
                     foreach (var recipe in tpl.resolvedRecipes)

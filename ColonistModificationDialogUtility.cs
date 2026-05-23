@@ -21,7 +21,6 @@ namespace ColonistModification
             }
 
             Find.WindowStack.Add(new Dialog_ColonistModification());
-            ColonistModificationManager.Instance.ForceCheckNow();
         }
     }
 }
