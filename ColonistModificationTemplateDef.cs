@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Verse;
 
-namespace ColonistModification
+namespace RimWorld
 {
     /// <summary>
     /// 殖民者制式改造模板定义
