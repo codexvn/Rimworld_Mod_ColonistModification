@@ -70,6 +70,15 @@ namespace ColonistModification
 
         public void AssignTemplate(int pawnThingID, string templateId)
         {
+            // 验证种族兼容性
+            if (!string.IsNullOrEmpty(templateId))
+            {
+                var tpl = GetTemplateById(templateId);
+                var pawn = FindPawnByID(pawnThingID);
+                if (tpl != null && pawn != null && !string.IsNullOrEmpty(tpl.targetBodyDefName)
+                    && pawn.RaceProps.body.defName != tpl.targetBodyDefName)
+                    return;
+            }
             assignedTemplateIds[pawnThingID] = templateId;
             // Also clear old records if template changed
             if (pawnRecords.TryGetValue(pawnThingID, out var records))

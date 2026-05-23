@@ -146,7 +146,11 @@ namespace ColonistModification
                         {
                             Manager.UnassignTemplate(pawn.thingIDNumber);
                         }));
-                        foreach (var t in AllTemplates)
+                        // 只显示适配当前种族的模板
+                        string pawnBodyName = pawn.RaceProps.body.defName;
+                        var compatibleTemplates = AllTemplates.Where(t =>
+                            string.IsNullOrEmpty(t.targetBodyDefName) || t.targetBodyDefName == pawnBodyName);
+                        foreach (var t in compatibleTemplates)
                         {
                             var captured = t;
                             opts.Add(new FloatMenuOption(captured.name, () =>
