@@ -124,7 +124,6 @@ namespace ColonistModification
 
             var templates = AllTemplates.ToList();
             RefreshPawnCache();
-            // 本轮已预留的物资，防止同一植入物分配给多人
             var reservedThings = new HashSet<Thing>();
 
             foreach (Map map in Find.Maps)
@@ -187,23 +186,31 @@ namespace ColonistModification
                                     if (record.status != ModificationStatus.PendingConfirmation)
                                     {
                                         record.status = ModificationStatus.PendingConfirmation;
-                                        // 发送确认弹窗
-                                        var nextRecipe = pending.FirstOrDefault(r =>
-                                            ColonistModificationUtility.CheckSurgeryConditions(pawn, r, pawn.Map).can);
-                                        var letter = new ChoiceLetter_ColonistModification
                                         {
-                                            title = template.name,
-                                            Text = $"殖民者 {pawn.LabelShort} 的改造方案条件已满足。\n\n下一步: {nextRecipe?.label ?? "?"}",
-                                            pawnThingID = pawn.thingIDNumber,
-                                            templateId = template.id,
-                                            templateLabel = template.name,
-                                            nextStepLabel = nextRecipe?.label ?? "?",
-                                            def = LetterDefOf.NeutralEvent,
-                                            lookTargets = new LookTargets(pawn)
-                                        };
-                                        Find.LetterStack.ReceiveLetter(letter);
-                                        break;
+                                            var nextRecipe = pending.FirstOrDefault(r =>
+                                                ColonistModificationUtility.CheckSurgeryConditions(pawn, r, pawn.Map).can);
+                                            var capturedPawn = pawn;
+                                            var capturedTemplate = template;
+                                            var box = new Dialog_MessageBox(
+                                                $"殖民者 {pawn.LabelShort} 的改造方案「{template.name}」条件已满足。\n\n下一步手术: {nextRecipe?.label ?? "?"}",
+                                                "开始改造", () =>
+                                                {
+                                                    ConfirmTemplateForPawn(capturedPawn, capturedTemplate);
+                                                },
+                                                "稍后提醒", () =>
+                                                {
+                                                    DelayTemplateForPawn(capturedPawn, capturedTemplate);
+                                                },
+                                                "制式改造确认", false, null, null);
+                                            box.buttonCText = "忽略";
+                                            box.buttonCAction = () =>
+                                            {
+                                                DismissTemplateForPawn(capturedPawn, capturedTemplate);
+                                            };
+                                            Find.WindowStack.Add(box);
+                                        }
                                     }
+                                    break;
                                 }
                                 else
                                 {
