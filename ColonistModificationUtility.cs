@@ -47,15 +47,18 @@ namespace ColonistModification
 
         private static bool HasXenogermAvailable(Map map, string targetXenotypeDefName)
         {
-            XenotypeDef targetXeno = null;
+            string targetLabel = null;
             if (!string.IsNullOrEmpty(targetXenotypeDefName))
-                targetXeno = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenotypeDefName);
+            {
+                var def = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenotypeDefName);
+                targetLabel = def != null ? def.label : targetXenotypeDefName;
+            }
             foreach (Thing thing in map.listerThings.ThingsOfDef(ThingDefOf.Xenogerm))
             {
                 if (thing.IsForbidden(Faction.OfPlayer) || thing.Position.Fogged(map)) continue;
                 Xenogerm xenogerm = thing as Xenogerm;
                 if (xenogerm == null) continue;
-                if (targetXeno != null && xenogerm.xenotypeName != targetXeno.label) continue;
+                if (targetLabel != null && xenogerm.xenotypeName != targetLabel) continue;
                 return true;
             }
             return false;

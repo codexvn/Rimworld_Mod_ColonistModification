@@ -178,17 +178,14 @@ namespace ColonistModification
                         var xenoRecipe = DefDatabase<RecipeDef>.GetNamedSilentFail("ImplantXenogerm");
                         if (xenoRecipe != null) recipeDefs.Add(xenoRecipe);
                     }
-                    XenotypeDef targetXenoDef = null;
-                    string targetXenoName = assignedTpl.xenogermTargetXenotypeDefName;
-                    if (!string.IsNullOrEmpty(targetXenoName))
-                        targetXenoDef = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenoName);
+                    string targetLabel = ResolveXenotypeLabel(assignedTpl.xenogermTargetXenotypeDefName);
                     for (int i = 0; i < pawn.BillStack.Count; i++)
                     {
                         if (pawn.BillStack[i] is Bill_Medical bm && recipeDefs.Contains(bm.recipe))
                         {
-                            if (bm.recipe.defName == "ImplantXenogerm" && targetXenoDef != null)
+                            if (bm.recipe.defName == "ImplantXenogerm" && targetLabel != null)
                             {
-                                if (bm.xenogerm != null && bm.xenogerm.xenotypeName == targetXenoDef.label)
+                                if (bm.xenogerm != null && bm.xenogerm.xenotypeName == targetLabel)
                                     activeSurgeries++;
                             }
                             else
@@ -485,18 +482,24 @@ namespace ColonistModification
             return result;
         }
 
+        private string ResolveXenotypeLabel(string storedName)
+        {
+            if (string.IsNullOrEmpty(storedName)) return null;
+            var def = DefDatabase<XenotypeDef>.GetNamedSilentFail(storedName);
+            if (def != null) return def.label;
+            return storedName; // 自定义异种，名就是 label
+        }
+
         private Xenogerm FindXenogerm(Map map, string targetXenotypeDefName)
         {
             if (map == null) return null;
-            XenotypeDef targetXeno = null;
-            if (!string.IsNullOrEmpty(targetXenotypeDefName))
-                targetXeno = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenotypeDefName);
+            string targetLabel = ResolveXenotypeLabel(targetXenotypeDefName);
             foreach (Thing thing in map.listerThings.ThingsOfDef(ThingDefOf.Xenogerm))
             {
                 Xenogerm xenogerm = thing as Xenogerm;
                 if (xenogerm == null || xenogerm.IsForbidden(Faction.OfPlayer) || xenogerm.Position.Fogged(map))
                     continue;
-                if (targetXeno != null && xenogerm.xenotypeName != targetXeno.label)
+                if (targetLabel != null && xenogerm.xenotypeName != targetLabel)
                     continue;
                 return xenogerm;
             }
@@ -510,9 +513,7 @@ namespace ColonistModification
             {
                 if (string.IsNullOrEmpty(xenogermTargetDefName)) return false;
                 if (pawn.genes == null) return false;
-                var targetXeno = DefDatabase<XenotypeDef>.GetNamedSilentFail(xenogermTargetDefName);
-                if (targetXeno == null) return false;
-                return pawn.genes.XenotypeLabel == targetXeno.LabelCap;
+                return pawn.genes.XenotypeLabel == ResolveXenotypeLabel(xenogermTargetDefName);
             }
 
             if (recipe.addsHediff == null) return false;

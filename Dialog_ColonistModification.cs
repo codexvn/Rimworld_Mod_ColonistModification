@@ -569,20 +569,24 @@ namespace ColonistModification
             else // 基因植入
             {
                 var xenotypeDefs = DefDatabase<XenotypeDef>.AllDefs.ToList();
+                var customXenotypes = Current.Game?.customXenotypeDatabase?.customXenotypes
+                    ?? new List<CustomXenotype>();
                 bool hasGene = !string.IsNullOrEmpty(editTemplate.xenogermTargetXenotypeDefName);
                 Widgets.CheckboxLabeled(new Rect(rightX, ry, rw, 22f), "启用基因植入", ref hasGene);
                 if (hasGene != !string.IsNullOrEmpty(editTemplate.xenogermTargetXenotypeDefName))
                 {
-                    editTemplate.xenogermTargetXenotypeDefName = hasGene ? xenotypeDefs.FirstOrDefault()?.defName : null;
+                    editTemplate.xenogermTargetXenotypeDefName = hasGene
+                        ? (xenotypeDefs.FirstOrDefault()?.defName ?? customXenotypes.FirstOrDefault()?.name)
+                        : null;
                     ColonistModificationMod.Instance.WriteSettings();
                 }
                 ry += 26f;
 
-                if (hasGene && xenotypeDefs.Count > 0)
+                if (hasGene && (xenotypeDefs.Count > 0 || customXenotypes.Count > 0))
                 {
+                    string selLabel = GetXenotypeLabel(editTemplate.xenogermTargetXenotypeDefName);
                     Widgets.Label(new Rect(rightX + 15f, ry, 80f, 26f), "目标异种:");
-                    var sel = xenotypeDefs.FirstOrDefault(x => x.defName == editTemplate.xenogermTargetXenotypeDefName) ?? xenotypeDefs[0];
-                    if (Widgets.ButtonText(new Rect(rightX + 95f, ry, 150f, 26f), sel.label))
+                    if (Widgets.ButtonText(new Rect(rightX + 95f, ry, 150f, 26f), selLabel))
                     {
                         var opts = new List<FloatMenuOption>();
                         foreach (var xd in xenotypeDefs)
@@ -591,6 +595,15 @@ namespace ColonistModification
                             opts.Add(new FloatMenuOption(c.label, () =>
                             {
                                 editTemplate.xenogermTargetXenotypeDefName = c.defName;
+                                ColonistModificationMod.Instance.WriteSettings();
+                            }));
+                        }
+                        foreach (var cx in customXenotypes)
+                        {
+                            var c = cx;
+                            opts.Add(new FloatMenuOption(c.name + " (自定义)", () =>
+                            {
+                                editTemplate.xenogermTargetXenotypeDefName = c.name;
                                 ColonistModificationMod.Instance.WriteSettings();
                             }));
                         }
@@ -649,6 +662,14 @@ namespace ColonistModification
             ry += 30f;
 
             cachedHeight = ry + 80f;
+        }
+
+        private string GetXenotypeLabel(string storedName)
+        {
+            if (string.IsNullOrEmpty(storedName)) return "?";
+            var def = DefDatabase<XenotypeDef>.GetNamedSilentFail(storedName);
+            if (def != null) return def.label;
+            return storedName; // 自定义异种名
         }
 
         private void DrawMedicineDropdown(Rect buttonRect, UserTemplate template)
