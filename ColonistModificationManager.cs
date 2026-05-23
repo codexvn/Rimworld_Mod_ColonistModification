@@ -73,8 +73,6 @@ namespace ColonistModification
 
         private Dictionary<int, List<PawnModificationRecord>> pawnRecords = new Dictionary<int, List<PawnModificationRecord>>();
         private Dictionary<int, string> assignedTemplateIds = new Dictionary<int, string>();
-        private HashSet<string> disabledTemplates = new HashSet<string>();
-        private HashSet<int> globallyIgnoredPawns = new HashSet<int>();
         private List<SurgeryLogEntry> surgeryLog = new List<SurgeryLogEntry>();
         private const int MaxLogEntries = 500;
 
@@ -208,12 +206,9 @@ namespace ColonistModification
 
                 foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners.ToList())
                 {
-                    if (globallyIgnoredPawns.Contains(pawn.thingIDNumber)) continue;
-
                     var assignedId = GetAssignedTemplateId(pawn.thingIDNumber);
                     var template = assignedId != null ? templates.FirstOrDefault(t => t.id == assignedId) : null;
                     if (template == null) continue;
-                    if (disabledTemplates.Contains(template.id)) continue;
                     if (template.StepCount == 0) continue;
 
                     if (!string.IsNullOrEmpty(template.targetBodyDefName)
@@ -447,8 +442,7 @@ namespace ColonistModification
             return GetPendingRecipes(pawn, template, record);
         }
 
-        /// <summary>返回全部 recipe+部位组合（含已完成），用于已完成 tab 显示全量清单</summary>
-        /// <summary>返回全部 recipe+部位组合（含已完成），从身体定义展开而非 GetPartsToApplyOn（后者排除已有植入物的部位）</summary>
+        /// <summary>返回全部 recipe+部位组合（含已完成），从身体定义展开而非 GetPartsToApplyOn</summary>
         public List<PendingRecipeItem> GetAllRecipeItems(Pawn pawn, UserTemplate template)
         {
             var body = pawn.RaceProps.body;
@@ -540,8 +534,6 @@ namespace ColonistModification
 
         // ===== Misc =====
 
-        public void DisableTemplate(string id) => disabledTemplates.Add(id);
-        public void EnableTemplate(string id) => disabledTemplates.Remove(id);
         /// <summary>
         /// 统一入口：遍历所有殖民者的未完成 recipe，检测条件并写入 recipeStatus 缓存。
         /// 缓存值约定：null=条件通过，其他字符串=失败原因。已有手术单通过 HasModificationBillForRecipe 实时判断。
@@ -557,13 +549,8 @@ namespace ColonistModification
                     settings.ResolveAllReferences();
             }
 
-            var templates = settings?.templates;
-            int templateCount = templates?.Count ?? -1;
-
-            var templateList = templates != null ? templates.ToList() : new List<UserTemplate>();
-            int pawnsWithAssignment = 0;
-            int pawnsProcessed = 0;
-            int recipesChecked = 0;
+            var templateList = settings?.templates != null
+                ? settings.templates.ToList() : new List<UserTemplate>();
 
             foreach (Map map in Find.Maps)
             {
@@ -572,11 +559,9 @@ namespace ColonistModification
                 {
                     var assignedId = GetAssignedTemplateId(pawn.thingIDNumber);
                     if (assignedId == null) continue;
-                    pawnsWithAssignment++;
 
                     var template = templateList.FirstOrDefault(t => t.id == assignedId);
                     if (template == null || template.StepCount == 0) continue;
-                    pawnsProcessed++;
 
                     var record = GetOrCreateRecord(pawn, template);
                     var pendingRecipes = GetPendingRecipes(pawn, template, record);
@@ -584,7 +569,6 @@ namespace ColonistModification
 
                     foreach (var item in pendingRecipes)
                     {
-                        recipesChecked++;
                         if (HasModificationBillForRecipe(pawn, item.recipe, item.part))
                             continue;
                         var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(
@@ -614,9 +598,6 @@ namespace ColonistModification
             RefreshAllCaches();
             lastCheckTick = Find.TickManager.TicksGame;
         }
-
-        public void IgnorePawn(int id) => globallyIgnoredPawns.Add(id);
-        public void UnignorePawn(int id) => globallyIgnoredPawns.Remove(id);
 
         private float CalculateColonyWealth()
         {
@@ -707,10 +688,6 @@ namespace ColonistModification
                 }
             }
 
-            Scribe_Collections.Look(ref disabledTemplates, "disabledTemplates", LookMode.Value);
-            if (disabledTemplates == null) disabledTemplates = new HashSet<string>();
-            Scribe_Collections.Look(ref globallyIgnoredPawns, "globallyIgnoredPawns", LookMode.Value);
-            if (globallyIgnoredPawns == null) globallyIgnoredPawns = new HashSet<int>();
         }
     }
 }

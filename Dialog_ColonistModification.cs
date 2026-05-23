@@ -611,20 +611,6 @@ namespace ColonistModification
             Widgets.Label(new Rect(rightX, ry, rw, 26f), "【参数设置】");
             ry += 28f;
 
-            // 失败自动重试
-            bool ar = editTemplate.autoRetryOnFailure;
-            Widgets.CheckboxLabeled(new Rect(rightX + 5f, ry, rw - 5f, 22f), "失败自动重试", ref ar);
-            if (ar != editTemplate.autoRetryOnFailure) { editTemplate.autoRetryOnFailure = ar; ColonistModificationMod.Instance.WriteSettings(); }
-            ry += 24f;
-
-            // 最大重试
-            Widgets.Label(new Rect(rightX + 5f, ry, 120f, 28f), "最大重试次数:");
-            int cr = editTemplate.maxRetriesPerStep;
-            string crb = cr.ToString();
-            Widgets.TextFieldNumeric(new Rect(rightX + 130f, ry + 2f, 50f, 24f), ref cr, ref crb, 0f, 99f);
-            if (cr != editTemplate.maxRetriesPerStep) { editTemplate.maxRetriesPerStep = cr; ColonistModificationMod.Instance.WriteSettings(); }
-            ry += 28f;
-
             // 最低财富
             Widgets.Label(new Rect(rightX + 5f, ry, 120f, 28f), "最低殖民地财富:");
             float cw = editTemplate.minColonyWealth;

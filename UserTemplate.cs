@@ -24,8 +24,6 @@ namespace ColonistModification
 
         // === 可配置参数 ===
 
-        public bool autoRetryOnFailure = true;
-        public int maxRetriesPerStep = 3;
         public float minColonyWealth = 0f;
         /// <summary>基因植入目标异种defName，null=不启用基因植入</summary>
         public string xenogermTargetXenotypeDefName;
@@ -40,12 +38,6 @@ namespace ColonistModification
         public MedicineCategory minMedicineCategory = MedicineCategory.Industrial;
 
         public int StepCount => resolvedRecipes.Count;
-
-        public RecipeDef GetStep(int index)
-        {
-            if (index < 0 || index >= resolvedRecipes.Count) return null;
-            return resolvedRecipes[index];
-        }
 
         /// <summary>
         /// 将 recipeDefNames 解析为 RecipeDef 引用，过滤无效名称。
@@ -69,8 +61,6 @@ namespace ColonistModification
             Scribe_Values.Look(ref id, "id");
             Scribe_Values.Look(ref name, "name", "新模板");
             Scribe_Collections.Look(ref recipeDefNames, "recipeDefNames", LookMode.Value);
-            Scribe_Values.Look(ref autoRetryOnFailure, "autoRetryOnFailure", true);
-            Scribe_Values.Look(ref maxRetriesPerStep, "maxRetriesPerStep", 3);
             Scribe_Values.Look(ref minColonyWealth, "minColonyWealth", 0f);
             Scribe_Values.Look(ref xenogermTargetXenotypeDefName, "xenogermTargetXenotypeDefName");
             Scribe_Values.Look(ref targetBodyDefName, "targetBodyDefName");

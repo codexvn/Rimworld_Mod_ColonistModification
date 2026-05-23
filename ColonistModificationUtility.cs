@@ -159,9 +159,15 @@ namespace ColonistModification
             return "未知";
         }
 
+        private static Dictionary<string, Dictionary<string, List<RecipeDef>>> cachedImplantGroups;
+
         public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup(BodyDef bodyDef = null)
         {
             var body = bodyDef ?? BodyDefOf.Human;
+            string key = body.defName;
+            if (cachedImplantGroups != null && cachedImplantGroups.TryGetValue(key, out var cached))
+                return cached;
+
             var result = new Dictionary<string, List<RecipeDef>>();
             var groupToPartLabels = new Dictionary<BodyPartGroupDef, HashSet<string>>();
 
@@ -221,6 +227,8 @@ namespace ColonistModification
             foreach (var list in result.Values)
                 list.Sort((a, b) => a.label.CompareTo(b.label));
 
+            if (cachedImplantGroups == null) cachedImplantGroups = new Dictionary<string, Dictionary<string, List<RecipeDef>>>();
+            cachedImplantGroups[key] = result;
             return result;
         }
 

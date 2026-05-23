@@ -24,8 +24,6 @@ namespace ColonistModification
                 name = "标准仿生改造",
                 recipeDefNames = new List<string> { "InstallBionicArm", "InstallBionicLeg", "InstallBionicEye" },
                 minColonyWealth = 5000f,
-                autoRetryOnFailure = true,
-                maxRetriesPerStep = 3,
             });
         }
 
