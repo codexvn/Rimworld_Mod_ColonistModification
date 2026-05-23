@@ -418,6 +418,7 @@ namespace ColonistModification
 
         private void AddLog(SurgeryLogEntry entry)
         {
+            if (!(ColonistModificationMod.Instance?.settings?.enableDetailedLogging ?? true)) return;
             surgeryLog.Add(entry);
             while (surgeryLog.Count > MaxLogEntries)
                 surgeryLog.RemoveAt(0);

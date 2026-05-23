@@ -24,6 +24,8 @@ namespace ColonistModification
 
             listing.Label($"当前共有 {settings.templates.Count} 个改造模板。");
             listing.Label("请在游戏中通过「制式改造」窗口编辑模板。");
+            listing.Gap();
+            listing.CheckboxLabeled("启用详细日志（显示在日志tab）", ref settings.enableDetailedLogging);
 
             listing.End();
         }

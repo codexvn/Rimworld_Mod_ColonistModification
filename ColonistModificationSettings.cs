@@ -10,6 +10,7 @@ namespace ColonistModification
     public class ColonistModificationSettings : ModSettings
     {
         public List<UserTemplate> templates = new List<UserTemplate>();
+        public bool enableDetailedLogging = true;
 
         /// <summary>
         /// 首次加载时创建默认模板。
@@ -41,6 +42,7 @@ namespace ColonistModification
             base.ExposeData();
             Scribe_Collections.Look(ref templates, "templates", LookMode.Deep);
             if (templates == null) templates = new List<UserTemplate>();
+            Scribe_Values.Look(ref enableDetailedLogging, "enableDetailedLogging", true);
         }
     }
 }
