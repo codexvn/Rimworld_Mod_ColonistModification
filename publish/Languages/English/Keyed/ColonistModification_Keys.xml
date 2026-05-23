@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+
+  <!-- ========== Window Title ========== -->
+  <ColonistModification.WindowTitle>Colonist Modification</ColonistModification.WindowTitle>
+
+  <!-- ========== Tabs ========== -->
+  <ColonistModification.TabOverview>Overview</ColonistModification.TabOverview>
+  <ColonistModification.TabPending>Incomplete</ColonistModification.TabPending>
+  <ColonistModification.TabCompleted>Completed</ColonistModification.TabCompleted>
+  <ColonistModification.TabLog>Log</ColonistModification.TabLog>
+  <ColonistModification.TabEditor>Template Editor</ColonistModification.TabEditor>
+
+  <!-- ========== Buttons ========== -->
+  <ColonistModification.BtnRefresh>Refresh</ColonistModification.BtnRefresh>
+  <ColonistModification.BtnAddAll>Add All Ready</ColonistModification.BtnAddAll>
+  <ColonistModification.BtnClose>Close</ColonistModification.BtnClose>
+  <ColonistModification.BtnAdd>Add</ColonistModification.BtnAdd>
+  <ColonistModification.BtnClearLog>Clear Log</ColonistModification.BtnClearLog>
+
+  <!-- ========== Status ========== -->
+  <ColonistModification.StatusWaiting>Waiting for resources</ColonistModification.StatusWaiting>
+  <ColonistModification.StatusPending>Pending confirmation</ColonistModification.StatusPending>
+  <ColonistModification.StatusCompleted>Completed</ColonistModification.StatusCompleted>
+  <ColonistModification.StatusDismissed>Dismissed</ColonistModification.StatusDismissed>
+  <ColonistModification.StatusDelayed>Delayed</ColonistModification.StatusDelayed>
+  <ColonistModification.StatusUnassigned>Unassigned</ColonistModification.StatusUnassigned>
+
+  <!-- ========== Surgery Status ========== -->
+  <ColonistModification.ConditionsMet>Conditions met</ColonistModification.ConditionsMet>
+  <ColonistModification.BillExists>Bill already added</ColonistModification.BillExists>
+
+  <!-- ========== Dialog ========== -->
+  <ColonistModification.ConfirmTitle>Colonist Modification</ColonistModification.ConfirmTitle>
+  <ColonistModification.ConfirmStart>Start</ColonistModification.ConfirmStart>
+  <ColonistModification.ConfirmDelay>Remind later</ColonistModification.ConfirmDelay>
+  <ColonistModification.ConfirmDismiss>Ignore</ColonistModification.ConfirmDismiss>
+
+  <!-- ========== Empty state ========== -->
+  <ColonistModification.NoPawns>No colonists assigned a template.</ColonistModification.NoPawns>
+  <ColonistModification.AllDone>All surgeries completed.</ColonistModification.AllDone>
+  <ColonistModification.NoLog>No records.</ColonistModification.NoLog>
+  <ColonistModification.NoCompleted>No completed surgeries.</ColonistModification.NoCompleted>
+  <ColonistModification.ManagerNotInit>Modification manager not initialized.</ColonistModification.ManagerNotInit>
+  <ColonistModification.ModNotInit>Mod config not initialized.</ColonistModification.ModNotInit>
+
+  <!-- ========== Progress ========== -->
+  <ColonistModification.ProgressFormat>Done {0} Left {1} (Total {2})</ColonistModification.ProgressFormat>
+  <ColonistModification.LogCount>{0} record(s)</ColonistModification.LogCount>
+
+  <!-- ========== Template Editor ========== -->
+  <ColonistModification.TemplateList>Templates:</ColonistModification.TemplateList>
+  <ColonistModification.NewTemplate>+ New Template</ColonistModification.NewTemplate>
+  <ColonistModification.TemplateName>Name:</ColonistModification.TemplateName>
+  <ColonistModification.Save>Save</ColonistModification.Save>
+  <ColonistModification.RaceFilter>Race:</ColonistModification.RaceFilter>
+  <ColonistModification.SubTabImplants>Implants</ColonistModification.SubTabImplants>
+  <ColonistModification.SubTabGenes>Gene Implant</ColonistModification.SubTabGenes>
+  <ColonistModification.EnableGenes>Enable gene implantation</ColonistModification.EnableGenes>
+  <ColonistModification.TargetXenotype>Target xenotype:</ColonistModification.TargetXenotype>
+  <ColonistModification.Settings>Settings</ColonistModification.Settings>
+  <ColonistModification.MinWealth>Min colony wealth:</ColonistModification.MinWealth>
+  <ColonistModification.RequireConfirm>Require confirmation</ColonistModification.RequireConfirm>
+  <ColonistModification.DelayDays>Delay days:</ColonistModification.DelayDays>
+  <ColonistModification.ColonistsOnly>Colonists only</ColonistModification.ColonistsOnly>
+  <ColonistModification.IncludeSlaves>Include slaves</ColonistModification.IncludeSlaves>
+
+  <!-- ========== Messages ========== -->
+  <ColonistModification.MsgSurgeryAdded>Starting surgery for {0}: '{1}' - {2}.</ColonistModification.MsgSurgeryAdded>
+  <ColonistModification.MsgAllComplete>{0} has completed all steps of template '{1}'!</ColonistModification.MsgAllComplete>
+  <ColonistModification.MsgDelayed>Delayed '{1}' modification for {0}.</ColonistModification.MsgDelayed>
+  <ColonistModification.MsgDismissed>Dismissed '{1}' modification for {0}.</ColonistModification.MsgDismissed>
+  <ColonistModification.MsgAddedAll>Added surgeries for {0} colonist(s).</ColonistModification.MsgAddedAll>
+
+  <!-- ========== Dropdown ========== -->
+  <ColonistModification.Unassign>None (unassign)</ColonistModification.Unassign>
+
+</LanguageData>

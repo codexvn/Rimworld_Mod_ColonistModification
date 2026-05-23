@@ -13,6 +13,16 @@
     - 左右部位分立追踪，做完一侧不跳过另一侧
     - 从殖民者身体实时检测完成状态，不需要额外记录
     - 手术并发控制，防止医院爆满
+
+    Standardized bionic implantation for colonists.
+
+    Features:
+    - Custom templates for implants (arms/legs/eyes/spine) and gene implantation
+    - Batch assign templates to colonists
+    - Auto-check conditions (materials, doctors, body parts), notify or auto-add
+    - Left/right body part tracking independent of each other
+    - Real-time completion detection via colonist hediffs
+    - Surgery concurrency control
   </description>
   <supportedVersions>
     <li>1.6</li>
