@@ -51,8 +51,6 @@ namespace ColonistModification
 
         private int lastCheckTick = 0;
         private const int CheckIntervalTicks = 250;
-        private const int LetterCooldownTicks = 60000;
-        private int lastLetterTick = -60000;
 
         private List<UserTemplate> AllTemplates =>
             ColonistModificationMod.Instance?.settings?.templates ?? new List<UserTemplate>();
@@ -114,8 +112,6 @@ namespace ColonistModification
             float colonyWealth = CalculateColonyWealth();
             if (colonyWealth < 0) return;
 
-            bool anyPendingConfirmation = false;
-            var readyNames = new List<string>();
             var templates = AllTemplates.ToList();
 
             foreach (Map map in Find.Maps)
@@ -178,8 +174,22 @@ namespace ColonistModification
                                     if (record.status != ModificationStatus.PendingConfirmation)
                                     {
                                         record.status = ModificationStatus.PendingConfirmation;
-                                        anyPendingConfirmation = true;
-                                        readyNames.Add(template.name);
+                                        // 发送确认弹窗
+                                        var nextRecipe = pending.FirstOrDefault(r =>
+                                            ColonistModificationUtility.CheckSurgeryConditions(pawn, r, pawn.Map).can);
+                                        var letter = new ChoiceLetter_ColonistModification
+                                        {
+                                            title = template.name,
+                                            Text = $"殖民者 {pawn.LabelShort} 的改造方案条件已满足。\n\n下一步: {nextRecipe?.label ?? "?"}",
+                                            pawnThingID = pawn.thingIDNumber,
+                                            templateId = template.id,
+                                            templateLabel = template.name,
+                                            nextStepLabel = nextRecipe?.label ?? "?",
+                                            def = LetterDefOf.NeutralEvent,
+                                            lookTargets = new LookTargets(pawn)
+                                        };
+                                        Find.LetterStack.ReceiveLetter(letter);
+                                        break;
                                     }
                                 }
                                 else
@@ -217,11 +227,6 @@ namespace ColonistModification
                 }
             }
 
-            if (anyPendingConfirmation && currentTick - lastLetterTick >= LetterCooldownTicks)
-            {
-                SendPendingConfirmationLetter(readyNames);
-                lastLetterTick = currentTick;
-            }
         }
 
         /// <summary>
@@ -404,15 +409,6 @@ namespace ColonistModification
             foreach (Map map in Find.Maps)
                 if (map.IsPlayerHome) wealth += map.wealthWatcher.WealthTotal;
             return wealth;
-        }
-
-        private void SendPendingConfirmationLetter(List<string> names)
-        {
-            if (names.Count == 0) return;
-            string list = string.Join("、", names.Distinct().Take(3));
-            Find.LetterStack.ReceiveLetter("殖民者制式改造已就绪",
-                $"有改造模板的条件已满足：\n\n{list}\n\n打开「殖民者改造管理」窗口确认。",
-                LetterDefOf.NeutralEvent);
         }
 
         private Pawn FindPawnByID(int thingID)
