@@ -18,7 +18,19 @@ namespace ColonistModification
         public void ExposeData()
         {
             Scribe_Values.Look(ref templateId, "templateId");
-            Scribe_Values.Look(ref status, "status");
+
+            string statusStr = Scribe.mode == LoadSaveMode.Saving
+                ? (status == ModificationStatus.Delayed || status == ModificationStatus.Dismissed ? status.ToString() : ModificationStatus.Idle.ToString())
+                : null;
+            Scribe_Values.Look(ref statusStr, "status", "Idle");
+            if (Scribe.mode == LoadSaveMode.LoadingVars)
+            {
+                if (statusStr == "Delayed" || statusStr == "Dismissed")
+                    status = statusStr == "Delayed" ? ModificationStatus.Delayed : ModificationStatus.Dismissed;
+                else
+                    status = ModificationStatus.Idle;
+            }
+
             Scribe_Values.Look(ref delayedUntilTick, "delayedUntilTick", 0);
         }
 
