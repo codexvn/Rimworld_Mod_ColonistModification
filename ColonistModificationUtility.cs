@@ -235,10 +235,16 @@ namespace ColonistModification
         /// 通过 RecipeWorker 类型筛选（而非 defName 前缀），mod 添加的植入物自动出现。
         /// 返回：部位组标签 -> 该组下的配方列表。
         /// </summary>
+        private static Dictionary<string, List<RecipeDef>> cachedImplantGroups;
+        private static BodyDef cachedImplantBodyDef;
+
         public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup(BodyDef bodyDef = null)
         {
-            var result = new Dictionary<string, List<RecipeDef>>();
             var body = bodyDef ?? BodyDefOf.Human;
+            if (cachedImplantGroups != null && cachedImplantBodyDef == body)
+                return cachedImplantGroups;
+
+            var result = new Dictionary<string, List<RecipeDef>>();
             // 缓存：BodyPartGroupDef -> 该组下所有 BodyPartRecord 的标签
             var groupToPartLabels = new Dictionary<BodyPartGroupDef, HashSet<string>>();
 
@@ -301,7 +307,15 @@ namespace ColonistModification
             foreach (var list in result.Values)
                 list.Sort((a, b) => a.label.CompareTo(b.label));
 
+            cachedImplantGroups = result;
+            cachedImplantBodyDef = body;
             return result;
+        }
+
+        public static void ClearImplantCache()
+        {
+            cachedImplantGroups = null;
+            cachedImplantBodyDef = null;
         }
 
         public static List<RecipeDef> GetXenogermRecipes()

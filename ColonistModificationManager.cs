@@ -51,6 +51,7 @@ namespace ColonistModification
 
         private int lastCheckTick = 0;
         private const int CheckIntervalTicks = 250;
+        private Dictionary<int, Pawn> pawnByIdCache = new Dictionary<int, Pawn>();
 
         private List<UserTemplate> AllTemplates =>
             ColonistModificationMod.Instance?.settings?.templates ?? new List<UserTemplate>();
@@ -113,6 +114,7 @@ namespace ColonistModification
             if (colonyWealth < 0) return;
 
             var templates = AllTemplates.ToList();
+            RefreshPawnCache();
 
             foreach (Map map in Find.Maps)
             {
@@ -411,15 +413,21 @@ namespace ColonistModification
             return wealth;
         }
 
-        private Pawn FindPawnByID(int thingID)
+        private void RefreshPawnCache()
         {
+            pawnByIdCache.Clear();
             foreach (Map map in Find.Maps)
                 foreach (Pawn pawn in map.mapPawns.AllPawns)
-                    if (pawn.thingIDNumber == thingID) return pawn;
+                    pawnByIdCache[pawn.thingIDNumber] = pawn;
             foreach (Caravan c in Find.WorldObjects.Caravans)
                 foreach (Pawn pawn in c.PawnsListForReading)
-                    if (pawn.thingIDNumber == thingID) return pawn;
-            return null;
+                    pawnByIdCache[pawn.thingIDNumber] = pawn;
+        }
+
+        private Pawn FindPawnByID(int thingID)
+        {
+            pawnByIdCache.TryGetValue(thingID, out var pawn);
+            return pawn;
         }
 
         // ===== Serialization =====
