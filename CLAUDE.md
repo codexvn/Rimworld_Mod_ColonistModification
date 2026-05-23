@@ -4,78 +4,218 @@
 
 ## 概述
 
-ColonistModification（制式改造）是一个 RimWorld mod，为游戏后期提供殖民者批量标准化改造功能——统一植入物手术。
+ColonistModification（制式改造）是一个 RimWorld mod，为游戏后期提供殖民者批量标准化改造功能——为指定殖民者按模板批量添加植入物手术。
 
 ## 反编译源码参考
 
 反编译的 RimWorld C# 源码位于 `F:\RiderProjects\Assembly-CSharp`。目标框架 .NET Framework 4.7.2，C# 7.3（不能用目标类型 `new()`，不能用 `ValueTuple` 解构）。
 
-本 mod 使用的关键 RimWorld API：
+关键 RimWorld API：
 - **DefDatabase<T>** — 所有游戏定义（ThingDef、RecipeDef、HediffDef、XenotypeDef 等）
-- **GameComponent** — 自动注册的持久组件，用于管理器 tick 循环
-- **Bill_Medical** — 医疗/手术 Bill。用 `new Bill_Medical(recipe, null)` 创建，`Part` 必须在 `AddBill` 之后设置
+- **GameComponent** — 自动注册的持久组件，`GameComponentTick()` 每 tick 调用
+- **Bill_Medical** — 手术 Bill。用 `new Bill_Medical(recipe, null)` 创建，`Part` 必须在 `pawn.BillStack.AddBill(bill)` 之后设置
 - **BillStack** — 每个 pawn 的 Bill 队列（`Pawn.BillStack`，大写 B）
-- **IExposable** — Scribe 存档/读档。**重要**：Scribe 使用 `GetUninitializedObject` 绕过字段初始化器。`Scribe_Collections.Look` 之后必须对集合字段做 null 守卫
-- **Window / WindowStack** — UI 系统。`PreOpen` 在首次渲染前调用。`Dialog_MessageBox` 支持最多 3 个按钮
-- **MainButtonDef + MainButtonWorker** — 通过 XML Def 注册底部栏按钮
-- **Mod / ModSettings** — mod 入口和跨存档设置持久化。设置文件路径：`%AppData%\..\Config\Mod_{pkgId}_{className}.xml`
-- **RecipeDef** — `addsHediff`、`workerClass`、`GetPartsToApplyOn(pawn, recipe)`、`appliedOnFixedBodyPartGroups`
-- **BodyPartRecord** — `LabelCap`（含左右）、`groups`
+- **IExposable** — Scribe 存档/读档。**重要**：Scribe 使用 `GetUninitializedObject` 绕过字段初始化器，`Scribe_Collections.Look` 之后必须对集合字段做 null 守卫
+- **Window / WindowStack** — UI 系统。生命周期：构造 → `PreOpen()`（首帧前一次） → `DoWindowContents(Rect)`（每帧）
+- **Dialog_MessageBox** — 确认弹窗，最多 3 个按钮（buttonA/buttonB/buttonC）
+- **RecipeDef** — `addsHediff`（手术添加的 hediff）、`GetPartsToApplyOn(pawn, recipe)` 返回可用部位列表
+- **BodyPartRecord** — `LabelCap`（含左右标签，如"左臂""右眼"）
 
 ## 构建
 
-项目引用 RimWorld DLL，路径为 `F:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\`。使用 `dotnet build`，目标 .NET Framework 4.7.2。输出路径：`publish/1.6/Assemblies/ColonistModification.dll`。所有引用必须设 `<Private>False</Private>`。
+`dotnet build`，目标 .NET Framework 4.7.2，输出 `publish/1.6/Assemblies/ColonistModification.dll`。所有 DLL 引用设 `<Private>False</Private>` 避免复制游戏 DLL。
 
-## 当前架构
+## 架构设计
 
-### 数据流
+### 一、数据模型
+
+#### UserTemplate（跨存档，ModSettings 配置文件）
+```
+UserTemplate
+├── id: string (GUID)           — 唯一标识
+├── name: string                — 显示名称
+├── recipeDefNames: List<string> — 手术配方名列表（序列化）
+├── resolvedRecipes: List<RecipeDef> — 解析后的 RecipeDef 对象（运行时，不序列化）
+├── autoRetryOnFailure: bool    — 失败自动重试
+├── maxRetriesPerStep: int      — 最大重试次数
+├── minColonyWealth: float      — 最低殖民地财富门槛
+├── targetBodyDefName: string   — 目标种族身体模板
+├── colonistsOnly / includeSlaves — 适用筛选
+├── requirePlayerConfirmation: bool — 是否需要玩家确认
+├── delayDays: int              — 延迟天数
+├── minMedicineCategory: enum   — 最低药品等级
+├── StepCount → resolvedRecipes.Count
+└── ResolveReferences()         — 从 DefDatabase 解析 recipeDefNames → resolvedRecipes
+```
+
+#### PawnModificationRecord（单存档，GameComponent .rws）
+```
+PawnModificationRecord
+├── templateId: string          — 关联的模板 ID
+├── status: ModificationStatus  — Idle/PendingConfirmation/Completed/Dismissed/Delayed
+├── delayedUntilTick: int       — 延迟到何时（Delayed 状态用）
+├── conditionFailReason: string — 失败原因汇总（运行时）
+├── recipeStatus: Dictionary<string, string> — 手术检测结果缓存（运行时）
+│     key: "InstallBionicArm|左臂" 或 "ImplantXenogerm"
+│     value: null = 条件通过
+│            "__HAS_BILL__" = 已有手术单
+│            其他字符串 = 失败原因
+└── ExposeData() — 序列化 templateId、status、delayedUntilTick
+```
+
+#### PendingRecipeItem（运行时展开）
+```
+PendingRecipeItem                — recipe+部位展开后的单条待处理项
+├── recipe: RecipeDef           — 手术配方
+├── part: BodyPartRecord        — 具体部位（null = 无部位手术）
+├── Label → "安装仿生臂 (左臂)" — 显示名
+└── Key → "InstallBionicArm|左臂" — 缓存 key
+```
+
+#### ModificationStatus 枚举
+| 状态 | 含义 | 存盘 |
+|------|------|------|
+| `Idle` | 等待条件满足 | ✓ |
+| `PendingConfirmation` | 弹出确认窗，等待玩家响应 | ✓ |
+| `Completed` | 全部手术完成 | ✓ |
+| `Dismissed` | 玩家点了"忽略" | ✓ |
+| `Delayed` | 玩家点了"稍后提醒" | ✓ |
+
+### 二、核心数据流
 
 ```
-ModSettings（跨存档配置文件）     GameComponent（单存档 .rws）
-┌──────────────────────┐       ┌──────────────────────────┐
-│ UserTemplate[]       │       │ assignedTemplateIds       │
-│   id, name           │◄──────│   pawnID → templateID     │
-│   recipeDefNames[]   │       │ pawnRecords               │
-│   resolvedRecipes[]  │       │   pawnID → Record[]       │
-│   设置（确认/延迟等） │       │     status, delayedTick  │
-└──────────────────────┘       └──────────────────────────┘
-                                        │
-                        GameComponentTick（每250 tick）
-                                        │
-                        RefreshAllCaches() → 更新 recipeStatus 缓存
-                                        │
-                        CheckAllTemplates() → 读缓存 → 弹窗/加Bill
+                        打开对话框 / 250 tick / 点刷新
+                                    │
+                                    ▼
+                          RefreshAllCaches()
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+              遍历所有殖民者    惰性 ResolveAll   逐 recipe+部位
+              查 assignedId     References      调 CheckSurgeryConditions
+                    │               │               │
+                    ▼               ▼               ▼
+             GetPendingRecipeItems  resolvedRecipes  recipeStatus[key] = 结果
+             展开为部位列表         从 defNames 解析   + 写日志
+                    │
+                    ▼
+              写入 record.recipeStatus 缓存
+              写入 record.conditionFailReason
+              （UI 后续直接读，不调 CheckSurgeryConditions）
+                                    │
+                                    ▼
+                          CheckAllTemplates()
+                          （仅 tick 循环，actOnResults=true）
+                                    │
+                    遍历 pawn → 读缓存 → can?
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+              确认模式         非确认模式        条件不满足
+              弹一个窗         多个 recipe       跳过
+              return           逐个 CreateAnd    继续下一个
+                                AddBill
 ```
 
-### 关键设计决策
+### 三、手术完成判定
 
-1. **模板跨存档（ModSettings）**：`UserTemplate` 存储在配置文件中。`recipeDefNames` 存盘，`resolvedRecipes` 运行时解析（不序列化）。首次 `RefreshAllCaches` 时惰性调 `ResolveAllReferences`。
-2. **分配存盘**：`assignedTemplateIds` 序列化到存档。`pawnRecords` 只存玩家决策相关状态（`PendingConfirmation`/`Delayed`/`Dismissed`）。
-3. **无自定义 Bill**：使用原版 `Bill_Medical`。不再有 `Bill_ColonistModification`。
-4. **bodyPart+recipe 分立追踪**：recipe 按 `GetPartsToApplyOn` 展开为部位行（左臂/右臂独立）。`IsRecipePartCompleted(pawn, recipe, part)` 实时查 hediff 判断完成。
-5. **无状态推进**：tick 循环检测 → 条件满足加 Bill → 手术完成 hediff 出现 → 下次 tick 检测已完成 → 跳过该部位 → 加下一个。失败后 hediff 不出现 → 下次 tick 重新加 Bill。
-6. **缓存驱动 UI**：`RefreshAllCaches` 填充 `record.recipeStatus`（key→null=通过/`__HAS_BILL__`=有单/失败原因）。UI 只读缓存，不调 `CheckSurgeryConditions`。
-7. **每 tick 一个弹窗**：确认模式下每 tick 最多弹一个 `Dialog_MessageBox`。
+不用任何存储字段。实时查殖民者身上的 hediff：
 
-### 存档数据结构
+```csharp
+bool IsRecipePartCompleted(Pawn pawn, RecipeDef recipe, BodyPartRecord part)
+{
+    if (recipe.addsHediff == null) return false;
+    if (part != null)
+        return pawn.health.hediffSet.hediffs.Any(h =>
+            h.def == recipe.addsHediff && h.Part == part);
+    return pawn.health.hediffSet.HasHediff(recipe.addsHediff);
+}
+```
 
-**在存档 .rws 中**：
-- `assignedTemplateIds` — pawn ID → template ID
-- `pawnRecords` — 每条含 `templateId`、`status`、`delayedUntilTick`
+- 有部位：查该部位上是否有 recipe 添加的 hediff。例如左臂上有 `BionicArm` hediff → 左臂已完成
+- 无部位：查全身是否有该 hediff。例如有 `Xenotype` hediff → 基因植入已完成
+
+### 四、Bill 创建
+
+```csharp
+CreateAndAddBill(pawn, template, item)
+    → new Bill_Medical(recipe, null)
+    → pawn.BillStack.AddBill(bill)
+    → bill.Part = item.part  // 必须在 AddBill 之后
+    → 写日志 + 发消息
+```
+
+调用路径：
+- **tick 非确认模式**：`CheckAllTemplates` 直接调，一个 tick 可加多个
+- **tick 确认模式**：弹窗 → 玩家点"开始改造" → 回调调 `CreateAndAddBill`
+- **手动添加**：UI"添加"按钮 → `AddSurgeryForRecipe` → `CreateAndAddBill`
+
+### 五、缓存值约定
+
+`record.recipeStatus[key]` 的三个含义：
+
+| 值 | 含义 | UI 显示 |
+|----|------|---------|
+| `null` | 条件通过，可添加 | 绿色"条件满足" + `[添加]` 按钮 |
+| `"__HAS_BILL__"` | BillStack 上已有对应手术单 | 蓝色"已添加手术单" |
+| 其他字符串 | 条件不满足 | 灰色 + 具体原因（如"缺少材料: 仿生臂 x1 (库存 0)"） |
+
+此约定在 `RefreshAllCaches` 中写入，UI 的 `DrawPendingList` 和 tick 的 `CheckAllTemplates` 都从缓存读取，不再调 `CheckSurgeryConditions`。
+
+### 六、UI 渲染
+
+5 个 tab，在 `DoWindowContents` 中按 `selectedTab` switch：
+- **Tab 0 模板概览**：每殖民者一行，下拉选模板，显示 `已完成X 未完成Y (共Z台手术)`，hover 显示失败原因
+- **Tab 1 未完成**：调用 `GetPendingRecipeItems` 获取待处理手术行，逐行显示条件状态和 `[添加]` 按钮
+- **Tab 2 已完成**：调用 `GetAllRecipeItems` 获取全部手术行，✓/✗ 标记完成状态
+- **Tab 3 日志**：从 `Manager.GetSurgeryLog()` 读，倒序显示检测记录和手术添加记录，可清除
+- **Tab 4 模板编辑**：左侧模板列表，右侧编辑区（植入物 checkbox + 基因植入 + 参数设置）
+
+刷新按钮在内容渲染前检测点击，确保同一帧数据更新。
+
+### 七、存档策略
+
+**序列化**（.rws 存档文件）：
+- `assignedTemplateIds: Dictionary<int, string>` — 殖民者分配了哪个模板
+- `pawnRecords: Dictionary<int, List<PawnModificationRecord>>` — 每条含 templateId、status、delayedUntilTick
 - `disabledTemplates`、`globallyIgnoredPawns`
 
-**不在存档中**（运行时计算）：
-- `surgeryLog`、`recipeStatus`、`conditionFailReason`、手术完成状态（从 hediff 实时检测）
+**不序列化**：
+- 模板定义 → ModSettings 配置文件（跨存档共享）
+- `recipeStatus`、`conditionFailReason` → 每次 `RefreshAllCaches` 重新计算
+- `surgeryLog` → 纯运行时，日志过多可清除
+- 完成状态 → 从 hediff 实时检测
 
-### 文件映射
+加载存档时 `ExposeData` 会清除指向不存在模板的失效分配。
+
+### 八、关键方法速查
+
+| 方法 | 文件 | 作用 |
+|------|------|------|
+| `RefreshAllCaches()` | Manager | 统一缓存刷新入口，遍历所有 pawn 的所有 recipe+部位，检测条件，写入 recipeStatus |
+| `CheckAllTemplates(tick, actOnResults)` | Manager | tick 动作循环：调 RefreshAllCaches 后读缓存，弹窗或加手术。actOnResults=false 时只刷新不动作 |
+| `ForceCheckNow()` | Manager | 公开刷新入口（PreOpen、刷新按钮调用），调 RefreshAllCaches |
+| `GetPendingRecipeItems(pawn, template)` | Manager | 返回未完成的 recipe+部位列表（展开部位，排除已完成的） |
+| `GetAllRecipeItems(pawn, template)` | Manager | 返回全部 recipe+部位列表（含已完成，用于已完成 tab 和概览计数） |
+| `IsRecipePartCompleted(pawn, recipe, part)` | Manager | 查殖民者身上 hediff 判断手术是否完成 |
+| `HasModificationBillForRecipe(pawn, recipe, part)` | Manager | 查 BillStack 上是否已有对应手术单 |
+| `CreateAndAddBill(pawn, template, item)` | Manager | 创建原版 Bill_Medical 并加入 BillStack |
+| `AssignTemplate / UnassignTemplate` | Manager | 分配/取消模板，调 RefreshAllCaches |
+| `GetOrCreateRecord(pawn, template)` | Manager | 两级查找（pawnID → templateID），自动创建 |
+| `CheckSurgeryConditions(pawn, recipe, map, minMed)` | Utility | 检查手术条件（部位、医生、药品、材料） |
+| `GetImplantRecipesByGroup(bodyDef)` | Utility | 按身体部位分组返回植入物配方列表 |
+| `ResolveReferences()` | UserTemplate | 从 DefDatabase 解析 recipeDefNames → resolvedRecipes |
+| `PreOpen()` | Dialog | 窗口首帧前调 ForceCheckNow 确保数据就绪 |
+
+### 九、文件映射
 
 | 文件 | 用途 |
 |------|------|
-| `ColonistModificationMod.cs` | Mod 入口，静态 Instance，settings 宿主 |
-| `ColonistModificationSettings.cs` | `List<UserTemplate>`、`EnsureDefaults()`、`ResolveAllReferences()` |
-| `UserTemplate.cs` | 模板数据模型：id、name、recipeDefNames、resolvedRecipes、设置 |
-| `ColonistModificationManager.cs` | GameComponent：tick 循环、`RefreshAllCaches`、`CheckAllTemplates`、序列化 |
-| `ColonistModificationUtility.cs` | 静态工具：`CheckSurgeryConditions`、`GetImplantRecipesByGroup`、`HasRequiredMaterials` |
-| `Dialog_ColonistModification.cs` | 5 标签页 UI：概览、未完成、已完成、日志、模板编辑 |
-| `MainButtonWorker_ColonistModification.cs` | 底部栏按钮 → 打开对话框 |
-| `ColonistModificationDialogUtility.cs` | `OpenDialog()` 入口 |
+| `ColonistModificationMod.cs` | Mod 入口，`static Instance`，settings 宿主 |
+| `ColonistModificationSettings.cs` | `List<UserTemplate>`、`EnsureDefaults()`、`ResolveAllReferences()`、`ExposeData` |
+| `UserTemplate.cs` | 模板数据模型 + `ResolveReferences()` + `ExposeData` |
+| `ColonistModificationManager.cs` | GameComponent：tick 循环、缓存刷新、动作处理、模板分配、序列化、日志 |
+| `ColonistModificationUtility.cs` | 静态工具：`CheckSurgeryConditions`、`HasRequiredMedicine`、`HasRequiredMaterials`、`GetImplantRecipesByGroup` |
+| `Dialog_ColonistModification.cs` | 5 tab UI 窗口：概览、未完成、已完成、日志、模板编辑 |
+| `MainButtonWorker_ColonistModification.cs` | 底部栏按钮 → `OpenDialog()` |
+| `ColonistModificationDialogUtility.cs` | `OpenDialog()` 入口 + 防重复打开 |
