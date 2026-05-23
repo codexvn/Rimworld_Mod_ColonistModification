@@ -487,7 +487,7 @@ namespace ColonistModification
             if (string.IsNullOrEmpty(storedName)) return null;
             var def = DefDatabase<XenotypeDef>.GetNamedSilentFail(storedName);
             if (def != null) return def.label;
-            return storedName; // 自定义异种，名就是 label
+            return storedName;
         }
 
         private Xenogerm FindXenogerm(Map map, string targetXenotypeDefName)

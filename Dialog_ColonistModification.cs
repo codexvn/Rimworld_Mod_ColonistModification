@@ -569,8 +569,8 @@ namespace ColonistModification
             else // 基因植入
             {
                 var xenotypeDefs = DefDatabase<XenotypeDef>.AllDefs.ToList();
-                var customXenotypes = Current.Game?.customXenotypeDatabase?.customXenotypes
-                    ?? new List<CustomXenotype>();
+                var customXenotypes = Find.CustomXenogermDatabase?.CustomXenogermsForReading
+                    ?? new List<CustomXenogerm>();
                 bool hasGene = !string.IsNullOrEmpty(editTemplate.xenogermTargetXenotypeDefName);
                 Widgets.CheckboxLabeled(new Rect(rightX, ry, rw, 22f), "启用基因植入", ref hasGene);
                 if (hasGene != !string.IsNullOrEmpty(editTemplate.xenogermTargetXenotypeDefName))
