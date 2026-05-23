@@ -17,6 +17,7 @@ namespace ColonistModification
         // 模板编辑器状态
         private string editingTemplateId;
         private string newTemplateName = "";
+        private int editorSubTab = 0;
         private Vector2 editorScrollPos = Vector2.zero;
 
         private ColonistModificationManager Manager => ColonistModificationManager.Instance;
@@ -352,50 +353,87 @@ namespace ColonistModification
             Widgets.Label(new Rect(0f, ey, ew, 26f), "【手术步骤 - 植入物】");
             ey += 28f;
 
-            var implantRecipes = ColonistModificationUtility.GetImplantRecipes();
-            var xenogermRecipes = ColonistModificationUtility.GetXenogermRecipes();
-
-            foreach (var recipe in implantRecipes)
+            // === 子标签：植入物 / 基因植入 ===
+            ey += 4f;
+            string[] subTabs = { "植入物", "基因植入" };
+            float subTabW = 90f;
+            for (int si = 0; si < subTabs.Length; si++)
             {
-                bool has = editingTemplate.recipeDefNames.Contains(recipe.defName);
-                bool newVal = has;
-                Rect checkRect = new Rect(5f, ey, ew - 10f, 22f);
-                Widgets.CheckboxLabeled(checkRect, recipe.label, ref newVal);
-                if (newVal != has)
+                Rect subRect = new Rect(si * (subTabW + 4f), ey, subTabW, 24f);
+                if (si == editorSubTab) GUI.color = Color.cyan;
+                if (Widgets.ButtonText(subRect, subTabs[si], true, false, true))
+                    editorSubTab = si;
+                GUI.color = Color.white;
+            }
+            ey += 30f;
+
+            if (editorSubTab == 0) // 植入物
+            {
+                var groupedRecipes = ColonistModificationUtility.GetImplantRecipesByGroup();
+                foreach (var kvp in groupedRecipes)
                 {
-                    if (newVal)
-                        editingTemplate.recipeDefNames.Add(recipe.defName);
-                    else
-                        editingTemplate.recipeDefNames.Remove(recipe.defName);
-                    editingTemplate.ResolveReferences();
+                    // 部位组标题
+                    Widgets.Label(new Rect(0f, ey, ew, 24f), $"◼ {kvp.Key}");
+                    ey += 24f;
+
+                    foreach (var recipe in kvp.Value)
+                    {
+                        bool has = editingTemplate.recipeDefNames.Contains(recipe.defName);
+                        bool newVal = has;
+                        Widgets.CheckboxLabeled(new Rect(15f, ey, ew - 15f, 22f), recipe.label, ref newVal);
+                        if (newVal != has)
+                        {
+                            if (newVal) editingTemplate.recipeDefNames.Add(recipe.defName);
+                            else editingTemplate.recipeDefNames.Remove(recipe.defName);
+                            editingTemplate.ResolveReferences();
+                            ColonistModificationMod.Instance.WriteSettings();
+                        }
+                        ey += 22f;
+                    }
+                    ey += 4f;
+                }
+            }
+            else // 基因植入
+            {
+                // 异种下拉选择
+                var xenotypeDefs = DefDatabase<XenotypeDef>.AllDefs.ToList();
+                bool hasGeneImplant = !string.IsNullOrEmpty(editingTemplate.xenogermTargetXenotypeDefName);
+                bool newGeneVal = hasGeneImplant;
+                Widgets.CheckboxLabeled(new Rect(0f, ey, ew, 22f), "启用基因植入", ref newGeneVal);
+                if (newGeneVal != hasGeneImplant)
+                {
+                    editingTemplate.xenogermTargetXenotypeDefName = newGeneVal
+                        ? xenotypeDefs.FirstOrDefault()?.defName : null;
                     ColonistModificationMod.Instance.WriteSettings();
                 }
-                ey += 22f;
-            }
+                ey += 26f;
 
-            // 胚芽
-            if (xenogermRecipes.Count > 0)
-            {
-                ey += 4f;
-                Widgets.Label(new Rect(0f, ey, ew, 26f), "【胚芽改造】");
-                ey += 28f;
-
-                foreach (var recipe in xenogermRecipes)
+                if (newGeneVal && xenotypeDefs.Count > 0)
                 {
-                    bool has = editingTemplate.recipeDefNames.Contains(recipe.defName);
-                    bool newVal = has;
-                    Rect checkRect = new Rect(5f, ey, ew - 10f, 22f);
-                    Widgets.CheckboxLabeled(checkRect, recipe.label, ref newVal);
-                    if (newVal != has)
+                    Widgets.Label(new Rect(15f, ey, 80f, 26f), "目标异种:");
+                    var selXenotype = xenotypeDefs.FirstOrDefault(x => x.defName == editingTemplate.xenogermTargetXenotypeDefName)
+                        ?? xenotypeDefs[0];
+                    if (Widgets.ButtonText(new Rect(95f, ey, 150f, 26f), selXenotype.label))
                     {
-                        if (newVal)
-                            editingTemplate.recipeDefNames.Add(recipe.defName);
-                        else
-                            editingTemplate.recipeDefNames.Remove(recipe.defName);
-                        editingTemplate.ResolveReferences();
-                        ColonistModificationMod.Instance.WriteSettings();
+                        var opts = new List<FloatMenuOption>();
+                        foreach (var xd in xenotypeDefs)
+                        {
+                            var captured = xd;
+                            opts.Add(new FloatMenuOption(captured.label, () =>
+                            {
+                                editingTemplate.xenogermTargetXenotypeDefName = captured.defName;
+                                ColonistModificationMod.Instance.WriteSettings();
+                            }));
+                        }
+                        Find.WindowStack.Add(new FloatMenu(opts));
                     }
+                    ey += 28f;
+
+                    Widgets.Label(new Rect(15f, ey, ew - 15f, 20f),
+                        "手术时将查找地图上匹配的异种胚，需提前在基因装配器制作。");
+                    GUI.color = Color.grey;
                     ey += 22f;
+                    GUI.color = Color.white;
                 }
             }
 

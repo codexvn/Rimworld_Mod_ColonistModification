@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using RimWorld;
@@ -221,22 +222,31 @@ namespace ColonistModification
         }
 
         /// <summary>
-        /// 获取所有可用手术 Recipe，按分类组织：
-        /// - 仿生植入物（addsHediff != null 且为人工部件）
-        /// - 异种胚芽（ImplantXenogerm）
+        /// 动态获取所有植入物配方，按身体部位分组。
+        /// 通过 RecipeWorker 类型筛选（而非 defName 前缀），mod 添加的植入物自动出现。
+        /// 返回：部位组标签 -> 该组下的配方列表。
         /// </summary>
-        public static List<RecipeDef> GetImplantRecipes()
+        public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup()
         {
-            var result = new List<RecipeDef>();
+            var result = new Dictionary<string, List<RecipeDef>>();
             foreach (var recipe in DefDatabase<RecipeDef>.AllDefs)
             {
-                if (recipe.addsHediff != null &&
-                    recipe.defName.StartsWith("Install") && recipe.targetsBodyPart)
-                {
-                    result.Add(recipe);
-                }
+                if (!recipe.targetsBodyPart || recipe.addsHediff == null) continue;
+                if (!typeof(Recipe_InstallArtificialBodyPart).IsAssignableFrom(recipe.workerClass) &&
+                    !typeof(Recipe_InstallNaturalBodyPart).IsAssignableFrom(recipe.workerClass)) continue;
+
+                string groupName = recipe.appliedOnFixedBodyPartGroups?.FirstOrDefault()?.LabelCap
+                    ?? recipe.appliedOnFixedBodyParts?.FirstOrDefault()?.LabelCap
+                    ?? "其他";
+                if (!result.ContainsKey(groupName))
+                    result[groupName] = new List<RecipeDef>();
+                result[groupName].Add(recipe);
             }
-            result.Sort((a, b) => a.label.CompareTo(b.label));
+
+            // 每个组内按标签排序
+            foreach (var list in result.Values)
+                list.Sort((a, b) => a.label.CompareTo(b.label));
+
             return result;
         }
 

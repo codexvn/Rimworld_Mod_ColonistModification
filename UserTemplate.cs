@@ -27,6 +27,9 @@ namespace ColonistModification
         public bool autoRetryOnFailure = true;
         public int maxRetriesPerStep = 3;
         public float minColonyWealth = 0f;
+        /// <summary>基因植入目标异种defName，null=不启用基因植入</summary>
+        public string xenogermTargetXenotypeDefName;
+
         public bool colonistsOnly = true;
         public bool includeSlaves = false;
         public bool requirePlayerConfirmation = true;
@@ -65,6 +68,7 @@ namespace ColonistModification
             Scribe_Values.Look(ref autoRetryOnFailure, "autoRetryOnFailure", true);
             Scribe_Values.Look(ref maxRetriesPerStep, "maxRetriesPerStep", 3);
             Scribe_Values.Look(ref minColonyWealth, "minColonyWealth", 0f);
+            Scribe_Values.Look(ref xenogermTargetXenotypeDefName, "xenogermTargetXenotypeDefName");
             Scribe_Values.Look(ref colonistsOnly, "colonistsOnly", true);
             Scribe_Values.Look(ref includeSlaves, "includeSlaves", false);
             Scribe_Values.Look(ref requirePlayerConfirmation, "requirePlayerConfirmation", true);
