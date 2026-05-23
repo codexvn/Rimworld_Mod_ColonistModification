@@ -21,7 +21,7 @@ namespace ColonistModification
 
             var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
             if (parts == null || !parts.Any())
-                return (false, "无可用的身体部位");
+                return (false, $"无可用身体部位 (手术部位: {GetRecipeBodyPartLabel(recipe)})");
 
             if (!recipe.Worker.AvailableOnNow(pawn, null))
                 return (false, "手术当前不可用");
@@ -30,10 +30,11 @@ namespace ColonistModification
                 return (false, "无可用医生（需满足技能且非倒地/失控）");
 
             if (!HasRequiredMedicine(recipe, map, minMedicineCategory))
-                return (false, "缺少所需药品");
+                return (false, $"缺少药品 (需要: {minMedicineCategory} 或更高)");
 
-            if (!HasRequiredMaterials(recipe, map))
-                return (false, "缺少手术所需材料");
+            var (hasMat, matReason) = HasRequiredMaterials(recipe, map);
+            if (!hasMat)
+                return (false, matReason);
 
             return (true, null);
         }
@@ -92,9 +93,9 @@ namespace ColonistModification
             return MedicineCategory.None;
         }
 
-        public static bool HasRequiredMaterials(RecipeDef recipe, Map map)
+        public static (bool hasMaterials, string missingInfo) HasRequiredMaterials(RecipeDef recipe, Map map)
         {
-            if (recipe.ingredients == null || recipe.ingredients.Count == 0) return true;
+            if (recipe.ingredients == null || recipe.ingredients.Count == 0) return (true, null);
             foreach (var ingredient in recipe.ingredients)
             {
                 if (ingredient.filter.Allows(ThingDefOf.MedicineHerbal) ||
@@ -102,25 +103,38 @@ namespace ColonistModification
                     ingredient.filter.Allows(ThingDefOf.MedicineUltratech))
                     continue;
 
-                if (!HasEnoughIngredient(ingredient, map))
-                    return false;
+                var (hasEnough, missingInfo) = HasEnoughIngredient(ingredient, map);
+                if (!hasEnough)
+                    return (false, missingInfo);
             }
-            return true;
+            return (true, null);
         }
 
-        private static bool HasEnoughIngredient(IngredientCount ingredient, Map map)
+        private static (bool hasEnough, string missingInfo) HasEnoughIngredient(IngredientCount ingredient, Map map)
         {
             float required = ingredient.GetBaseCount();
             float found = 0f;
+            string label = ingredient.filter.Summary;
+            if (string.IsNullOrEmpty(label)) label = "材料";
+
             foreach (Thing thing in map.listerThings.AllThings)
             {
                 if (ingredient.filter.Allows(thing) && !thing.IsForbidden(Faction.OfPlayer))
                 {
                     found += thing.stackCount;
-                    if (found >= required) return true;
+                    if (found >= required) return (true, null);
                 }
             }
-            return false;
+            return (false, $"缺少材料: {label} x{required} (库存 {found:F0})");
+        }
+
+        private static string GetRecipeBodyPartLabel(RecipeDef recipe)
+        {
+            if (recipe.appliedOnFixedBodyParts != null && recipe.appliedOnFixedBodyParts.Count > 0)
+                return string.Join(", ", recipe.appliedOnFixedBodyParts.Select(p => p.LabelCap));
+            if (recipe.appliedOnFixedBodyPartGroups != null && recipe.appliedOnFixedBodyPartGroups.Count > 0)
+                return recipe.appliedOnFixedBodyPartGroups[0].LabelCap;
+            return "未知";
         }
 
         public static Bill_ColonistModification CreateBillForStep(
