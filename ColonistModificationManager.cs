@@ -507,7 +507,7 @@ namespace ColonistModification
             var settings = mod?.settings;
             if (settings != null)
             {
-                bool needResolve = settings.templates.Any(t => t.resolvedRecipes.Count == 0 && t.recipeDefNames.Count > 0);
+                bool needResolve = settings.templates.Any(t => t.resolvedRecipes.Count != t.recipeDefNames.Count);
                 if (needResolve)
                     settings.ResolveAllReferences();
             }

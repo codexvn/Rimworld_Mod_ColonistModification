@@ -52,6 +52,7 @@ namespace ColonistModification
         /// </summary>
         public void ResolveReferences()
         {
+            if (resolvedRecipes == null) resolvedRecipes = new List<RecipeDef>();
             resolvedRecipes.Clear();
             foreach (string defName in recipeDefNames)
             {
