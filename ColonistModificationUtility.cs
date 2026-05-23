@@ -238,21 +238,66 @@ namespace ColonistModification
         public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup()
         {
             var result = new Dictionary<string, List<RecipeDef>>();
+            var humanBody = BodyDefOf.Human;
+            // 缓存：BodyPartGroupDef -> 该组下所有 BodyPartRecord 的标签
+            var groupToPartLabels = new Dictionary<BodyPartGroupDef, HashSet<string>>();
+
             foreach (var recipe in DefDatabase<RecipeDef>.AllDefs)
             {
                 if (!recipe.targetsBodyPart || recipe.addsHediff == null) continue;
                 if (!typeof(Recipe_InstallArtificialBodyPart).IsAssignableFrom(recipe.workerClass) &&
                     !typeof(Recipe_InstallNaturalBodyPart).IsAssignableFrom(recipe.workerClass)) continue;
 
-                string groupName = recipe.appliedOnFixedBodyPartGroups?.FirstOrDefault()?.LabelCap
-                    ?? recipe.appliedOnFixedBodyParts?.FirstOrDefault()?.LabelCap
-                    ?? "其他";
-                if (!result.ContainsKey(groupName))
-                    result[groupName] = new List<RecipeDef>();
-                result[groupName].Add(recipe);
+                var groupNames = new List<string>();
+
+                // 只取第一个部位组，展开为具体左右部位标签。避免同一部位因属于多个组而重复。
+                if (recipe.appliedOnFixedBodyPartGroups != null && recipe.appliedOnFixedBodyPartGroups.Count > 0)
+                {
+                    var g = recipe.appliedOnFixedBodyPartGroups[0];
+                    if (!groupToPartLabels.TryGetValue(g, out var labels))
+                    {
+                        labels = new HashSet<string>();
+                        foreach (var part in humanBody.AllParts)
+                        {
+                            if (part.groups != null && part.groups.Contains(g))
+                                labels.Add(part.LabelCap);
+                        }
+                        groupToPartLabels[g] = labels;
+                    }
+                    groupNames.AddRange(labels);
+                }
+
+                // 通过具体部位定义
+                if (recipe.appliedOnFixedBodyParts != null)
+                {
+                    foreach (var p in recipe.appliedOnFixedBodyParts)
+                    {
+                        // 查看该部位在人体中的实际标签
+                        var parts = humanBody.GetPartsWithDef(p);
+                        if (parts.Count > 0)
+                        {
+                            foreach (var part in parts)
+                                groupNames.Add(part.LabelCap);
+                        }
+                        else
+                        {
+                            groupNames.Add(p.LabelCap);
+                        }
+                    }
+                }
+
+                if (groupNames.Count == 0)
+                    groupNames.Add("其他");
+
+                foreach (string groupName in groupNames.Distinct())
+                {
+                    if (!result.ContainsKey(groupName))
+                        result[groupName] = new List<RecipeDef>();
+                    if (!result[groupName].Contains(recipe))
+                        result[groupName].Add(recipe);
+                }
             }
 
-            // 每个组内按标签排序
             foreach (var list in result.Values)
                 list.Sort((a, b) => a.label.CompareTo(b.label));
 
