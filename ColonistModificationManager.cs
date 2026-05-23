@@ -34,6 +34,7 @@ namespace ColonistModification
     {
         Idle,
         PendingConfirmation,
+        Queued,
         InProgress,
         Completed,
         Dismissed,
@@ -51,6 +52,7 @@ namespace ColonistModification
 
         private int lastCheckTick = 0;
         private const int CheckIntervalTicks = 250;
+        private const int MaxConcurrentSurgeries = 1;
         private Dictionary<int, Pawn> pawnByIdCache = new Dictionary<int, Pawn>();
 
         private List<UserTemplate> AllTemplates =>
@@ -124,6 +126,37 @@ namespace ColonistModification
 
             var templates = AllTemplates.ToList();
             RefreshPawnCache();
+
+            // Pre-compute once: active mod bill count + eligible doctors per map
+            var modPatientIds = new HashSet<int>();
+            int activeSurgeryCount = 0;
+            var doctorPool = new Dictionary<Map, List<Pawn>>();
+
+            foreach (Map map in Find.Maps)
+            {
+                if (!map.IsPlayerHome) continue;
+
+                // Count mod patients across ALL pawns (colonists + prisoners)
+                foreach (Pawn p in map.mapPawns.FreeColonistsAndPrisoners)
+                {
+                    if (HasActiveModificationBill(p))
+                    {
+                        modPatientIds.Add(p.thingIDNumber);
+                        activeSurgeryCount++;
+                    }
+                }
+
+                // Build doctor pool: only free colonists who can operate
+                var doctors = new List<Pawn>();
+                foreach (Pawn p in map.mapPawns.FreeColonists)
+                {
+                    if (!p.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation)) continue;
+                    if (p.Downed || p.InMentalState) continue;
+                    doctors.Add(p);
+                }
+                doctorPool[map] = doctors;
+            }
+
             var reservedThings = new HashSet<Thing>();
 
             foreach (Map map in Find.Maps)
@@ -131,6 +164,8 @@ namespace ColonistModification
                 if (!map.IsPlayerHome) continue;
 
                 var pawns = map.mapPawns.FreeColonistsAndPrisoners.ToList();
+                var eligibleDoctors = doctorPool.TryGetValue(map, out var d) ? d : new List<Pawn>();
+
                 foreach (Pawn pawn in pawns)
                 {
                     if (globallyIgnoredPawns.Contains(pawn.thingIDNumber)) continue;
@@ -140,7 +175,6 @@ namespace ColonistModification
                     if (template == null) continue;
                     if (disabledTemplates.Contains(template.id)) continue;
 
-                    // 种族筛选：身体模板不匹配则跳过
                     if (!string.IsNullOrEmpty(template.targetBodyDefName))
                     {
                         if (pawn.RaceProps.body.defName != template.targetBodyDefName)
@@ -151,7 +185,6 @@ namespace ColonistModification
 
                     var record = GetOrCreateRecord(pawn, template);
 
-                    // Check if all done
                     if (record.completedRecipeDefNames.Count >= template.StepCount)
                     {
                         record.status = ModificationStatus.Completed;
@@ -161,65 +194,66 @@ namespace ColonistModification
                     switch (record.status)
                     {
                         case ModificationStatus.Idle:
-                        case ModificationStatus.PendingConfirmation:
+                        case ModificationStatus.Queued:
                         {
-                            var pending = GetPendingRecipes(pawn, template, record);
+                            var pendingRecipes = GetPendingRecipes(pawn, template, record);
                             record.conditionFailReason = "";
-                            bool anyReady = false;
+                            RecipeDef firstReady = null;
 
-                            foreach (var recipe in pending)
+                            foreach (var recipe in pendingRecipes)
                             {
-                                var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(pawn, recipe, pawn.Map, reservedThings);
+                                var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(
+                                    pawn, recipe, pawn.Map, reservedThings);
                                 if (can)
                                 {
-                                    anyReady = true;
+                                    firstReady = recipe;
                                     break;
                                 }
                                 if (!string.IsNullOrEmpty(reason))
                                     record.conditionFailReason += $"· {recipe.label}: {reason}\n";
                             }
 
-                            if (anyReady)
+                            if (firstReady != null)
                             {
-                                if (template.requirePlayerConfirmation)
+                                if (record.status == ModificationStatus.Idle && template.requirePlayerConfirmation)
                                 {
-                                    if (record.status != ModificationStatus.PendingConfirmation)
-                                    {
-                                        record.status = ModificationStatus.PendingConfirmation;
+                                    record.status = ModificationStatus.PendingConfirmation;
+                                    var capturedPawn = pawn;
+                                    var capturedTemplate = template;
+                                    var capturedRecipe = firstReady;
+                                    var box = new Dialog_MessageBox(
+                                        $"殖民者 {pawn.LabelShort} 的改造方案「{template.name}」条件已满足。\n\n下一步手术: {capturedRecipe.label}",
+                                        "开始改造", () =>
                                         {
-                                            var nextRecipe = pending.FirstOrDefault(r =>
-                                                ColonistModificationUtility.CheckSurgeryConditions(pawn, r, pawn.Map).can);
-                                            var capturedPawn = pawn;
-                                            var capturedTemplate = template;
-                                            var box = new Dialog_MessageBox(
-                                                $"殖民者 {pawn.LabelShort} 的改造方案「{template.name}」条件已满足。\n\n下一步手术: {nextRecipe?.label ?? "?"}",
-                                                "开始改造", () =>
-                                                {
-                                                    ConfirmTemplateForPawn(capturedPawn, capturedTemplate);
-                                                },
-                                                "稍后提醒", () =>
-                                                {
-                                                    DelayTemplateForPawn(capturedPawn, capturedTemplate);
-                                                },
-                                                "制式改造确认", false, null, null);
-                                            box.buttonCText = "忽略";
-                                            box.buttonCAction = () =>
-                                            {
-                                                DismissTemplateForPawn(capturedPawn, capturedTemplate);
-                                            };
-                                            Find.WindowStack.Add(box);
-                                        }
-                                    }
-                                    break;
+                                            ConfirmTemplateForPawn(capturedPawn, capturedTemplate);
+                                        },
+                                        "稍后提醒", () =>
+                                        {
+                                            DelayTemplateForPawn(capturedPawn, capturedTemplate);
+                                        },
+                                        "制式改造确认", false, null, null);
+                                    box.buttonCText = "忽略";
+                                    box.buttonCAction = () =>
+                                    {
+                                        DismissTemplateForPawn(capturedPawn, capturedTemplate);
+                                    };
+                                    Find.WindowStack.Add(box);
                                 }
                                 else
                                 {
-                                    StartSurgeryForPawn(pawn, template, record);
-                                    ReserveRecipeIngredients(template, record, reservedThings);
+                                    TryStartOrQueue(pawn, template, record, firstReady,
+                                        reservedThings, ref activeSurgeryCount, modPatientIds, eligibleDoctors);
                                 }
+                            }
+                            else if (record.status == ModificationStatus.Queued)
+                            {
+                                record.status = ModificationStatus.Idle;
                             }
                             break;
                         }
+
+                        case ModificationStatus.PendingConfirmation:
+                            break;
 
                         case ModificationStatus.Delayed:
                             if (currentTick >= record.delayedUntilTick)
@@ -229,30 +263,15 @@ namespace ColonistModification
                         case ModificationStatus.InProgress:
                             if (!HasModificationBill(pawn, template))
                             {
-                                var pending = GetPendingRecipes(pawn, template, record);
-                                bool anyReady = false;
-                                foreach (var recipe in pending)
-                                {
-                                    if (ColonistModificationUtility.CheckSurgeryConditions(pawn, recipe, pawn.Map).can)
-                                    {
-                                        StartSurgeryForPawn(pawn, template, record);
-                                        anyReady = true;
-                                        break;
-                                    }
-                                }
-                                if (!anyReady)
-                                    record.status = ModificationStatus.PendingConfirmation;
+                                record.status = ModificationStatus.Idle;
+                                TryDequeueNext();
                             }
                             break;
                     }
                 }
             }
-
         }
 
-        /// <summary>
-        /// 获取所有待执行的手术配方（无序：任意未完成且可被执行）。
-        /// </summary>
         private List<RecipeDef> GetPendingRecipes(Pawn pawn, UserTemplate template, PawnModificationRecord record)
         {
             var result = new List<RecipeDef>();
@@ -327,7 +346,161 @@ namespace ColonistModification
         {
             var record = GetOrCreateRecord(pawn, template);
             record.status = ModificationStatus.Idle;
-            StartSurgeryForPawn(pawn, template, record);
+            TryStartOrQueue(pawn, template, record, new HashSet<Thing>());
+        }
+
+        private void TryStartOrQueue(Pawn pawn, UserTemplate template, PawnModificationRecord record,
+            RecipeDef firstReady, HashSet<Thing> reservedThings, ref int activeSurgeryCount,
+            HashSet<int> modPatientIds, List<Pawn> eligibleDoctors)
+        {
+            if (activeSurgeryCount >= MaxConcurrentSurgeries)
+            {
+                if (record.status != ModificationStatus.Queued)
+                    record.status = ModificationStatus.Queued;
+                return;
+            }
+
+            if (!HasAvailableDoctorFast(pawn, firstReady, eligibleDoctors, modPatientIds))
+            {
+                if (record.status != ModificationStatus.Queued)
+                    record.status = ModificationStatus.Queued;
+                return;
+            }
+
+            DoStartSurgery(pawn, template, record, firstReady);
+            ReserveRecipeIngredients(template, record, reservedThings);
+            activeSurgeryCount++;
+            modPatientIds.Add(pawn.thingIDNumber);
+        }
+
+        private void TryStartOrQueue(Pawn pawn, UserTemplate template, PawnModificationRecord record,
+            HashSet<Thing> reservedThings)
+        {
+            if (GetActiveModificationSurgeryCount() >= MaxConcurrentSurgeries)
+            {
+                if (record.status != ModificationStatus.Queued)
+                    record.status = ModificationStatus.Queued;
+                return;
+            }
+
+            var pending = GetPendingRecipes(pawn, template, record);
+            RecipeDef nextRecipe = pending.FirstOrDefault(r =>
+                ColonistModificationUtility.CheckSurgeryConditions(pawn, r, pawn.Map).can);
+            if (nextRecipe == null) return;
+
+            if (!HasAvailableDoctor(pawn, nextRecipe))
+            {
+                if (record.status != ModificationStatus.Queued)
+                    record.status = ModificationStatus.Queued;
+                return;
+            }
+
+            DoStartSurgery(pawn, template, record, nextRecipe);
+            ReserveRecipeIngredients(template, record, reservedThings);
+        }
+
+        private void DoStartSurgery(Pawn pawn, UserTemplate template, PawnModificationRecord record,
+            RecipeDef recipe)
+        {
+            int idx = template.resolvedRecipes.IndexOf(recipe);
+            var bill = ColonistModificationUtility.CreateBillForStep(recipe, pawn, template, idx);
+            pawn.BillStack.AddBill(bill);
+            record.status = ModificationStatus.InProgress;
+
+            Messages.Message(
+                $"开始对殖民者 {pawn.LabelShort} 执行制式改造 '{template.name}' 中的 {recipe.label}。",
+                new LookTargets(pawn), MessageTypeDefOf.NeutralEvent, false);
+        }
+
+        private bool HasAvailableDoctorFast(Pawn patient, RecipeDef recipe,
+            List<Pawn> eligibleDoctors, HashSet<int> modPatientIds)
+        {
+            foreach (Pawn pawn in eligibleDoctors)
+            {
+                if (pawn == patient) continue;
+                if (modPatientIds.Contains(pawn.thingIDNumber)) continue;
+                if (recipe.workSkill != null && (pawn.skills?.GetSkill(recipe.workSkill) == null)) continue;
+                return true;
+            }
+            return false;
+        }
+
+        private void TryDequeueNext()
+        {
+            if (GetActiveModificationSurgeryCount() >= MaxConcurrentSurgeries) return;
+
+            foreach (Map map in Find.Maps)
+            {
+                if (!map.IsPlayerHome) continue;
+                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners.ToList())
+                {
+                    var assignedId = GetAssignedTemplateId(pawn.thingIDNumber);
+                    var template = assignedId != null
+                        ? AllTemplates.FirstOrDefault(t => t.id == assignedId)
+                        : null;
+                    if (template == null) continue;
+
+                    var record = GetRecord(pawn, template);
+                    if (record == null || record.status != ModificationStatus.Queued) continue;
+
+                    var pending = GetPendingRecipes(pawn, template, record);
+                    RecipeDef nextRecipe = pending.FirstOrDefault(r =>
+                        ColonistModificationUtility.CheckSurgeryConditions(pawn, r, pawn.Map).can);
+                    if (nextRecipe == null)
+                    {
+                        record.status = ModificationStatus.Idle;
+                        continue;
+                    }
+
+                    if (!HasAvailableDoctor(pawn, nextRecipe)) continue;
+
+                    DoStartSurgery(pawn, template, record, nextRecipe);
+                    return;
+                }
+            }
+        }
+
+        private int GetActiveModificationSurgeryCount()
+        {
+            int count = 0;
+            foreach (Map map in Find.Maps)
+            {
+                if (!map.IsPlayerHome) continue;
+                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners.ToList())
+                {
+                    if (HasActiveModificationBill(pawn))
+                        count++;
+                }
+            }
+            return count;
+        }
+
+        private bool HasAvailableDoctor(Pawn patient, RecipeDef recipe)
+        {
+            Map map = patient.Map;
+            if (map == null) return false;
+
+            foreach (Pawn pawn in map.mapPawns.FreeColonists.ToList())
+            {
+                if (pawn == patient) continue;
+                if (!pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation)) continue;
+                if (pawn.Downed || pawn.InMentalState) continue;
+                if (recipe.workSkill != null && (pawn.skills?.GetSkill(recipe.workSkill) == null)) continue;
+                if (HasActiveModificationBill(pawn)) continue;
+
+                return true;
+            }
+            return false;
+        }
+
+        private static bool HasActiveModificationBill(Pawn pawn)
+        {
+            for (int i = 0; i < pawn.BillStack.Count; i++)
+            {
+                if (pawn.BillStack[i] is Bill_ColonistModification)
+                    return true;
+            }
+            return false;
         }
 
         public void DelayTemplateForPawn(Pawn pawn, UserTemplate template)
@@ -361,19 +534,22 @@ namespace ColonistModification
 
             if (record.completedRecipeDefNames.Count >= template.StepCount)
                 record.status = ModificationStatus.Completed;
+
+            TryDequeueNext();
         }
 
         public void NotifyStepFailed(Pawn pawn, UserTemplate template, int stepIndex)
         {
             var record = GetOrCreateRecord(pawn, template);
             record.failedStepIndex = stepIndex;
-            // Mark as "completed" so it's skipped in future checks
             var recipe = template.GetStep(stepIndex);
             if (recipe != null)
                 record.completedRecipeDefNames.Add(recipe.defName);
 
             if (record.completedRecipeDefNames.Count >= template.StepCount)
                 record.status = ModificationStatus.Completed;
+
+            TryDequeueNext();
         }
 
         // ===== Queries =====
@@ -381,6 +557,25 @@ namespace ColonistModification
         public UserTemplate GetTemplateById(string id)
         {
             return AllTemplates.FirstOrDefault(t => t.id == id);
+        }
+
+        public List<(Pawn pawn, UserTemplate template, PawnModificationRecord record)> GetCompletedRecords()
+        {
+            var result = new List<(Pawn, UserTemplate, PawnModificationRecord)>();
+            foreach (var kvp in pawnRecords)
+            {
+                var pawn = FindPawnByID(kvp.Key);
+                if (pawn == null) continue;
+                foreach (var record in kvp.Value)
+                {
+                    if (record.status == ModificationStatus.Completed)
+                    {
+                        var template = GetTemplateById(record.templateId);
+                        if (template != null) result.Add((pawn, template, record));
+                    }
+                }
+            }
+            return result;
         }
 
         public List<(Pawn pawn, UserTemplate template)> GetPendingConfirmations()
@@ -392,7 +587,8 @@ namespace ColonistModification
                 if (pawn == null) continue;
                 foreach (var record in kvp.Value)
                 {
-                    if (record.status == ModificationStatus.PendingConfirmation)
+                    if (record.status == ModificationStatus.PendingConfirmation
+                        || record.status == ModificationStatus.Queued)
                     {
                         var template = GetTemplateById(record.templateId);
                         if (template != null) result.Add((pawn, template));
@@ -490,8 +686,17 @@ namespace ColonistModification
 
             if (Scribe.mode == LoadSaveMode.Saving)
             {
-                // Clean invalid
-                var invalid = pawnRecords.Keys.Where(id => { var p = FindPawnByID(id); return p == null || p.Dead || p.Destroyed; }).ToList();
+                var validIds = new HashSet<int>();
+                foreach (Map map in Find.Maps)
+                    foreach (Pawn pawn in map.mapPawns.AllPawns)
+                        if (!pawn.Dead && !pawn.Destroyed)
+                            validIds.Add(pawn.thingIDNumber);
+                foreach (Caravan c in Find.WorldObjects.Caravans)
+                    foreach (Pawn pawn in c.PawnsListForReading)
+                        if (!pawn.Dead && !pawn.Destroyed)
+                            validIds.Add(pawn.thingIDNumber);
+
+                var invalid = pawnRecords.Keys.Where(id => !validIds.Contains(id)).ToList();
                 foreach (var id in invalid) { pawnRecords.Remove(id); assignedTemplateIds.Remove(id); }
             }
 

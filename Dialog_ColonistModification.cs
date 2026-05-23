@@ -30,7 +30,7 @@ namespace ColonistModification
 
         public Dialog_ColonistModification()
         {
-            this.forcePause = true;
+            this.forcePause = false;
             this.draggable = true;
             this.resizeable = true;
             this.doCloseX = true;
@@ -112,13 +112,17 @@ namespace ColonistModification
             }
 
             float y = 0f;
-            float width = rect.width;
+            float w = rect.width;
+            float rowH = 24f;
+            float nameW = 130f;
+            float templateW = 150f;
+            float gap = 6f;
 
             // Column headers
-            Widgets.Label(new Rect(0f, y, 200f, 24f), "殖民者");
-            Widgets.Label(new Rect(210f, y, 200f, 24f), "分配模板");
-            Widgets.Label(new Rect(420f, y, 300f, 24f), "状态");
-            y += 26f;
+            Widgets.Label(new Rect(0f, y, nameW, 20f), "殖民者");
+            Widgets.Label(new Rect(nameW + gap, y, templateW, 20f), "分配模板");
+            Widgets.Label(new Rect(nameW + templateW + gap * 2, y, w - nameW - templateW - gap * 2, 20f), "状态");
+            y += 22f;
 
             foreach (Map map in Find.Maps)
             {
@@ -130,23 +134,28 @@ namespace ColonistModification
                     UserTemplate assigned = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
                     var record = assigned != null ? Manager.GetRecord(pawn, assigned) : null;
 
-                    // Row background
-                    if (record != null && record.status == ModificationStatus.PendingConfirmation)
-                        Widgets.DrawBoxSolid(new Rect(0f, y, width, 24f), new Color(1f, 0.92f, 0.016f, 0.1f));
+                    // Row background + left stripe
+                    if (record != null)
+                    {
+                        Color bg = GetStatusColor(record);
+                        bg.a = 0.08f;
+                        Widgets.DrawBoxSolid(new Rect(0f, y, w, rowH), bg);
+                        Widgets.DrawBoxSolid(new Rect(0f, y, 3f, rowH), GetStatusColor(record));
+                    }
 
                     // Name
-                    Widgets.Label(new Rect(0f, y + 2f, 200f, 20f), pawn.LabelShort);
+                    Widgets.Label(new Rect(6f, y + 2f, nameW - 6f, 20f), pawn.LabelShort);
 
                     // Template dropdown
                     string selName = assigned?.name ?? "无";
-                    if (Widgets.ButtonText(new Rect(210f, y, 200f, 22f), selName))
+                    Rect templateRect = new Rect(nameW + gap, y + 1f, templateW, 22f);
+                    if (Widgets.ButtonText(templateRect, selName))
                     {
                         var opts = new List<FloatMenuOption>();
                         opts.Add(new FloatMenuOption("无 (不改造)", () =>
                         {
                             Manager.UnassignTemplate(pawn.thingIDNumber);
                         }));
-                        // 只显示适配当前种族的模板
                         string pawnBodyName = pawn.RaceProps.body.defName;
                         var compatibleTemplates = AllTemplates.Where(t =>
                             string.IsNullOrEmpty(t.targetBodyDefName) || t.targetBodyDefName == pawnBodyName);
@@ -162,22 +171,33 @@ namespace ColonistModification
                         Find.WindowStack.Add(new FloatMenu(opts));
                     }
 
-                    // Status & reasons
+                    // Status (single line) + hover tooltip
+                    string statusLine;
+                    string tooltip = null;
+                    Rect statusRect = new Rect(nameW + templateW + gap * 2, y + 2f,
+                        w - nameW - templateW - gap * 2, 20f);
+
                     if (record != null && assigned != null)
                     {
-                        string statusText = GetStatusLabel(record);
                         int completed = record.completedRecipeDefNames?.Count ?? 0;
-                        string fullText = $"{statusText} ({completed}/{assigned.StepCount})";
+                        statusLine = $"{GetStatusLabel(record)}  ({completed}/{assigned.StepCount})";
 
-                        if (record.status == ModificationStatus.Idle && !string.IsNullOrEmpty(record.conditionFailReason))
-                            fullText += $"\n{record.conditionFailReason.TrimEnd()}";
-
-                        GUI.color = GetStatusColor(record);
-                        float h = LabelWithHeight(new Rect(420f, y + 2f, 300f, 20f), fullText);
-                        GUI.color = Color.white;
+                        if (!string.IsNullOrEmpty(record.conditionFailReason))
+                            tooltip = record.conditionFailReason.TrimEnd();
+                    }
+                    else
+                    {
+                        statusLine = "未分配";
                     }
 
-                    y += Mathf.Max(24f, Text.CalcHeight(GetStatusLabel(record), 300f)) + 4f;
+                    GUI.color = record != null ? GetStatusColor(record) : Color.gray;
+                    Widgets.Label(statusRect, statusLine);
+                    GUI.color = Color.white;
+
+                    if (tooltip != null)
+                        TooltipHandler.TipRegion(statusRect, tooltip);
+
+                    y += rowH + 2f;
                 }
             }
 
@@ -197,25 +217,33 @@ namespace ColonistModification
             var pending = Manager.GetPendingConfirmations();
             if (!pending.Any())
             {
-                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "当前没有等待确认的改造项目。");
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "当前没有等待确认或排队中的改造项目。");
                 cachedHeight = 30f;
                 return;
             }
 
             float y = 0f;
             float w = rect.width;
+            float rowH = 24f;
+
             foreach (var (pawn, template) in pending)
             {
                 var record = Manager.GetRecord(pawn, template);
-                string label = $"殖民者: {pawn.LabelShort}  |  模板: {template.name}";
-                float lh = Text.CalcHeight(label, w * 0.6f);
+                if (record == null) continue;
 
-                Rect cardRect = new Rect(0f, y, w, lh + 8f);
-                Widgets.DrawBoxSolid(cardRect, new Color(0.25f, 0.25f, 0.1f, 0.4f));
-                Widgets.Label(new Rect(4f, y + 4f, w * 0.6f, lh), label);
-                y += cardRect.height + 2f;
-                DrawActionButtons(20f, y, pawn, template, record);
-                y += 28f;
+                // Card background
+                Color bg = GetStatusColor(record);
+                bg.a = 0.1f;
+                Widgets.DrawBoxSolid(new Rect(0f, y, w, rowH + 28f), bg);
+                Widgets.DrawBoxSolid(new Rect(0f, y, 3f, rowH + 28f), GetStatusColor(record));
+
+                // Info line
+                string label = $"{pawn.LabelShort}  —  {template.name}  —  {GetStatusLabel(record)}";
+                Widgets.Label(new Rect(8f, y + 3f, w * 0.7f, 20f), label);
+
+                y += rowH;
+                DrawActionButtons(8f, y, pawn, template, record);
+                y += 28f + 4f;
             }
             cachedHeight = y + 40f;
         }
@@ -230,29 +258,29 @@ namespace ColonistModification
                 return;
             }
 
-            float y = 0f;
-            bool found = false;
-            foreach (var template in AllTemplates)
+            var completed = Manager.GetCompletedRecords();
+            if (!completed.Any())
             {
-                foreach (Map map in Find.Maps)
-                {
-                    if (!map.IsPlayerHome) continue;
-                    foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
-                    {
-                        var record = Manager.GetRecord(pawn, template);
-                        if (record != null && record.status == ModificationStatus.Completed)
-                        {
-                            found = true;
-                            string t = $"殖民者: {pawn.LabelShort}  |  模板: {template.name}  |  ✓ 已完成";
-                            float h = LabelWithHeight(new Rect(0f, y, rect.width, 24f), t);
-                            y += h + 2f;
-                        }
-                    }
-                }
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "暂无已完成的改造记录。");
+                cachedHeight = 30f;
+                return;
             }
 
-            if (!found)
-                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "暂无已完成的改造记录。");
+            float y = 0f;
+            float w = rect.width;
+            float rowH = 24f;
+
+            foreach (var (pawn, template, record) in completed)
+            {
+                Widgets.DrawBoxSolid(new Rect(0f, y, w, rowH), new Color(0.3f, 0.8f, 0.3f, 0.1f));
+                Widgets.DrawBoxSolid(new Rect(0f, y, 3f, rowH), new Color(0.3f, 0.8f, 0.3f));
+
+                int completedCount = record.completedRecipeDefNames?.Count ?? 0;
+                string label = $"{pawn.LabelShort}  —  {template.name}  —  ✓ 已完成 ({completedCount}/{template.StepCount})";
+                Widgets.Label(new Rect(8f, y + 3f, w - 16f, 20f), label);
+
+                y += rowH + 2f;
+            }
             cachedHeight = y + 40f;
         }
 
@@ -547,6 +575,13 @@ namespace ColonistModification
                     break;
                 case ModificationStatus.Completed:
                     GUI.color = new Color(0.3f, 0.8f, 0.3f); LabelWithHeight(new Rect(x, y, 200f, 22f), "✓ 已完成"); GUI.color = Color.white; break;
+                case ModificationStatus.Queued:
+                    GUI.color = new Color(0.4f, 0.6f, 1f);
+                    LabelWithHeight(new Rect(x, y, 200f, 22f), "⏳ 排队等待可用医生…");
+                    GUI.color = Color.white;
+                    if (Widgets.ButtonText(new Rect(x + 210f, y, bw, 22f), "取消排队"))
+                        Manager.DismissTemplateForPawn(pawn, template);
+                    break;
                 case ModificationStatus.Idle:
                     if (Widgets.ButtonText(new Rect(x, y, bw + 20f, 22f), "强制开始")) Manager.ConfirmTemplateForPawn(pawn, template);
                     break;
@@ -559,8 +594,18 @@ namespace ColonistModification
         {
             if (Manager == null) return;
             var list = Manager.GetPendingConfirmations();
-            foreach (var (pawn, template) in list) Manager.ConfirmTemplateForPawn(pawn, template);
-            Messages.Message($"已确认 {list.Count} 项改造，手术将依次开始。", MessageTypeDefOf.NeutralEvent, false);
+            int count = 0;
+            foreach (var (pawn, template) in list)
+            {
+                var record = Manager.GetRecord(pawn, template);
+                if (record != null && record.status == ModificationStatus.PendingConfirmation)
+                {
+                    Manager.ConfirmTemplateForPawn(pawn, template);
+                    count++;
+                }
+            }
+            if (count > 0)
+                Messages.Message($"已确认 {count} 项改造，手术将依次开始。", MessageTypeDefOf.NeutralEvent, false);
         }
 
         private string GetStatusLabel(PawnModificationRecord record)
@@ -573,6 +618,7 @@ namespace ColonistModification
                 case ModificationStatus.InProgress: return "▶ 进行中";
                 case ModificationStatus.Completed: return "✓ 已完成";
                 case ModificationStatus.Dismissed: return "✗ 已忽略";
+                case ModificationStatus.Queued: return "⏳ 排队等待";
                 case ModificationStatus.Delayed: return "⏱ 已延迟";
                 default: return "?";
             }
@@ -586,6 +632,7 @@ namespace ColonistModification
                 case ModificationStatus.PendingConfirmation: return new Color(1f, 0.84f, 0f);
                 case ModificationStatus.InProgress: return Color.green;
                 case ModificationStatus.Completed: return new Color(0.3f, 0.8f, 0.3f);
+                case ModificationStatus.Queued: return new Color(0.4f, 0.6f, 1f);
                 case ModificationStatus.Dismissed: return Color.gray;
                 case ModificationStatus.Delayed: return new Color(0.5f, 0.5f, 1f);
                 default: return Color.white;

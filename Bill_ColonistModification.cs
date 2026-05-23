@@ -68,8 +68,10 @@ namespace ColonistModification
             HediffDef targetHediff = currentRecipe?.addsHediff;
             Xenogerm boundXenogerm = this.xenogerm;
 
-            // 记录手术前目标hediff是否存在
-            bool hadHediffBefore = targetHediff != null && patient.health.hediffSet.HasHediff(targetHediff);
+            // 记录手术前目标hediff数量
+            int hediffCountBefore = targetHediff != null
+                ? patient.health.hediffSet.hediffs.Count(h => h.def == targetHediff)
+                : 0;
 
             // ---- 执行基础手术逻辑（手术 + 删除Bill） ----
             base.Notify_IterationCompleted(billDoer, ingredients);
@@ -79,8 +81,9 @@ namespace ColonistModification
             bool surgerySucceeded;
             if (targetHediff != null)
             {
-                // 添加hediff的手术：检查hediff是否被成功添加
-                surgerySucceeded = patient.health.hediffSet.HasHediff(targetHediff) && !hadHediffBefore;
+                // 比较手术前后hediff数量（避免重复类型hediff误判）
+                int hediffCountAfter = patient.health.hediffSet.hediffs.Count(h => h.def == targetHediff);
+                surgerySucceeded = hediffCountAfter > hediffCountBefore;
             }
             else if (currentRecipe.defName == "ImplantXenogerm")
             {
@@ -165,7 +168,6 @@ namespace ColonistModification
                 retryBill.template = template;
                 retryBill.currentStepIndex = stepIndex;
                 retryBill.retryCount = currentRetryCount + 1;
-                retryBill.SetPawnRestriction(patient);
                 if (part != null)
                 {
                     retryBill.Part = part;

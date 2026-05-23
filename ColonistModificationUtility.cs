@@ -148,7 +148,6 @@ namespace ColonistModification
             bill.template = template;
             bill.currentStepIndex = stepIndex;
             bill.retryCount = retryCount;
-            bill.SetPawnRestriction(patient);
 
             if (recipe.targetsBodyPart)
             {
@@ -168,14 +167,20 @@ namespace ColonistModification
             var map = patient.Map;
             if (map == null) return;
 
+            string targetXenotypeDefName = bill.template?.xenogermTargetXenotypeDefName;
+            XenotypeDef targetXenotype = null;
+            if (!string.IsNullOrEmpty(targetXenotypeDefName))
+                targetXenotype = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenotypeDefName);
+
             foreach (Thing thing in map.listerThings.ThingsOfDef(ThingDefOf.Xenogerm))
             {
                 Xenogerm xenogerm = thing as Xenogerm;
-                if (xenogerm != null && !xenogerm.IsForbidden(Faction.OfPlayer) && !xenogerm.Position.Fogged(map))
-                {
-                    bill.xenogerm = xenogerm;
-                    return;
-                }
+                if (xenogerm == null || xenogerm.IsForbidden(Faction.OfPlayer) || xenogerm.Position.Fogged(map))
+                    continue;
+                if (targetXenotype != null && xenogerm.xenotypeName != targetXenotype.label)
+                    continue;
+                bill.xenogerm = xenogerm;
+                return;
             }
         }
 
