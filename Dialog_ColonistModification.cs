@@ -194,8 +194,9 @@ namespace ColonistModification
 
                     if (record != null && assigned != null)
                     {
-                        int completed = record.completedRecipeKeys?.Count ?? 0;
-                        int total = Manager.GetAllRecipeItems(pawn, assigned).Count;
+                        var allItems = Manager.GetAllRecipeItems(pawn, assigned);
+                        int total = allItems.Count;
+                        int completed = allItems.Count(item => Manager.IsRecipePartCompleted(pawn, item.recipe, item.part));
                         int remaining = total - completed;
                         statusLine = $"{GetStatusLabel(record)}  已完成{completed} 未完成{remaining} (共{total}台手术)";
 
@@ -351,8 +352,7 @@ namespace ColonistModification
                 var allItems = Manager.GetAllRecipeItems(pawn, template);
                 foreach (var item in allItems)
                 {
-                    bool done = record != null
-                        && record.completedRecipeKeys.Contains(item.Key);
+                    bool done = Manager.IsRecipePartCompleted(pawn, item.recipe, item.part);
                     if (done)
                     {
                         GUI.color = new Color(0.3f, 0.8f, 0.3f);

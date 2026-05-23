@@ -54,7 +54,6 @@
         </Reference>
     </ItemGroup>
     <ItemGroup>
-        <Compile Include="Bill_ColonistModification.cs" />
         <Compile Include="ColonistModificationDialogUtility.cs" />
         <Compile Include="ColonistModificationManager.cs" />
         <Compile Include="ColonistModificationMod.cs" />

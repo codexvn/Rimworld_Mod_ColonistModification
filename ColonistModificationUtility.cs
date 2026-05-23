@@ -137,66 +137,6 @@ namespace ColonistModification
             return "未知";
         }
 
-        public static Bill_ColonistModification CreateBillForStep(
-            RecipeDef recipe, Pawn patient, UserTemplate template, int stepIndex, int retryCount = 0)
-        {
-            Bill_ColonistModification bill = new Bill_ColonistModification(recipe);
-            bill.templateId = template.id;
-            bill.template = template;
-            bill.currentStepIndex = stepIndex;
-            bill.retryCount = retryCount;
-
-
-            if (recipe.defName == "ImplantXenogerm" && ModsConfig.BiotechActive)
-                TryBindXenogerm(bill, patient);
-
-            return bill;
-        }
-
-        private static void TryBindXenogerm(Bill_ColonistModification bill, Pawn patient)
-        {
-            var map = patient.Map;
-            if (map == null) return;
-
-            string targetXenotypeDefName = bill.template?.xenogermTargetXenotypeDefName;
-            XenotypeDef targetXenotype = null;
-            if (!string.IsNullOrEmpty(targetXenotypeDefName))
-                targetXenotype = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenotypeDefName);
-
-            foreach (Thing thing in map.listerThings.ThingsOfDef(ThingDefOf.Xenogerm))
-            {
-                Xenogerm xenogerm = thing as Xenogerm;
-                if (xenogerm == null || xenogerm.IsForbidden(Faction.OfPlayer) || xenogerm.Position.Fogged(map))
-                    continue;
-                if (targetXenotype != null && xenogerm.xenotypeName != targetXenotype.label)
-                    continue;
-                bill.xenogerm = xenogerm;
-                return;
-            }
-        }
-
-        public static int GetNextStepIndex(Pawn pawn, UserTemplate template)
-        {
-            var record = ColonistModificationManager.Instance?.GetRecord(pawn, template);
-            for (int i = 0; i < template.resolvedRecipes.Count; i++)
-            {
-                var recipe = template.resolvedRecipes[i];
-                if (IsRecipeFullyComplete(pawn, recipe, record)) continue;
-                return i;
-            }
-            return -1;
-        }
-
-        private static bool IsRecipeFullyComplete(Pawn pawn, RecipeDef recipe, PawnModificationRecord record)
-        {
-            if (record == null) return false;
-            if (!recipe.targetsBodyPart)
-                return record.completedRecipeKeys.Contains(recipe.defName);
-            var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
-            if (parts == null || !parts.Any()) return false;
-            return parts.All(p => record.completedRecipeKeys.Contains($"{recipe.defName}|{p.LabelCap}"));
-        }
-
         public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup(BodyDef bodyDef = null)
         {
             var body = bodyDef ?? BodyDefOf.Human;

@@ -10,9 +10,7 @@ namespace ColonistModification
     {
         public string templateId;
         public ModificationStatus status = ModificationStatus.Idle;
-        public HashSet<string> completedRecipeKeys = new HashSet<string>();
         public int delayedUntilTick = 0;
-        public int failedStepIndex = -1;
 
         public string conditionFailReason;
         public Dictionary<string, string> recipeStatus = new Dictionary<string, string>();
@@ -21,10 +19,7 @@ namespace ColonistModification
         {
             Scribe_Values.Look(ref templateId, "templateId");
             Scribe_Values.Look(ref status, "status");
-            Scribe_Collections.Look(ref completedRecipeKeys, "completedRecipeKeys", LookMode.Value);
-            if (completedRecipeKeys == null) completedRecipeKeys = new HashSet<string>();
             Scribe_Values.Look(ref delayedUntilTick, "delayedUntilTick", 0);
-            Scribe_Values.Look(ref failedStepIndex, "failedStepIndex", -1);
         }
 
     }
@@ -179,7 +174,10 @@ namespace ColonistModification
 
                     var record = GetOrCreateRecord(pawn, template);
 
-                    if (record.completedRecipeKeys.Count >= template.StepCount)
+                    var allItems = GetAllRecipeItems(pawn, template);
+                    int total = allItems.Count;
+                    int done = allItems.Count(item => IsRecipePartCompleted(pawn, item.recipe, item.part));
+                    if (done >= total)
                     {
                         record.status = ModificationStatus.Completed;
                         continue;
@@ -217,7 +215,11 @@ namespace ColonistModification
                             var capturedItem = item;
                             var box = new Dialog_MessageBox(
                                 $"殖民者 {pawn.LabelShort} 的改造方案「{template.name}」条件已满足。\n\n下一步手术: {capturedItem.Label}",
-                                "开始改造", () => ConfirmTemplateForPawn(capturedPawn, capturedTemplate),
+                                "开始改造", () =>
+                                {
+                                    CreateAndAddBill(capturedPawn, capturedTemplate, capturedItem);
+                                    RefreshAllCaches();
+                                },
                                 "稍后提醒", () => DelayTemplateForPawn(capturedPawn, capturedTemplate),
                                 "制式改造确认", false, null, null);
                             box.buttonCText = "忽略";
@@ -226,7 +228,7 @@ namespace ColonistModification
                             return;
                         }
 
-                        CreateAndAddBill(pawn, template, record, item);
+                        CreateAndAddBill(pawn, template, item);
                     }
 
                     if (confirmationShownThisTick) return;
@@ -256,15 +258,14 @@ namespace ColonistModification
                     {
                         foreach (var part in parts)
                         {
-                            string key = $"{recipe.defName}|{part.LabelCap}";
-                            if (record.completedRecipeKeys.Contains(key)) continue;
+                            if (IsRecipePartCompleted(pawn, recipe, part)) continue;
                             result.Add(new PendingRecipeItem { recipe = recipe, part = part });
                         }
                     }
                 }
                 else
                 {
-                    if (record.completedRecipeKeys.Contains(recipe.defName)) continue;
+                    if (IsRecipePartCompleted(pawn, recipe, null)) continue;
                     result.Add(new PendingRecipeItem { recipe = recipe, part = null });
                 }
             }
@@ -299,53 +300,17 @@ namespace ColonistModification
 
         // ===== Surgery =====
 
-        public void StartSurgeryForPawn(Pawn pawn, UserTemplate template, PawnModificationRecord record = null)
-        {
-            if (record == null) record = GetOrCreateRecord(pawn, template);
-
-            var pending = GetPendingRecipes(pawn, template, record);
-            PendingRecipeItem bestItem = null;
-            foreach (var item in pending)
-            {
-                if (ColonistModificationUtility.CheckSurgeryConditions(pawn, item.recipe, pawn.Map, template.minMedicineCategory).can)
-                {
-                    bestItem = item;
-                    break;
-                }
-            }
-
-            if (bestItem == null)
-            {
-                record.status = ModificationStatus.PendingConfirmation;
-                return;
-            }
-
-            CreateAndAddBill(pawn, template, record, bestItem);
-        }
-
         public void AddSurgeryForRecipe(Pawn pawn, UserTemplate template, RecipeDef recipe, BodyPartRecord part = null)
         {
-            var record = GetOrCreateRecord(pawn, template);
-            string key = part != null ? $"{recipe.defName}|{part.LabelCap}" : recipe.defName;
-            if (record.completedRecipeKeys.Contains(key)) return;
-            CreateAndAddBill(pawn, template, record, new PendingRecipeItem { recipe = recipe, part = part });
+            if (IsRecipePartCompleted(pawn, recipe, part)) return;
+            CreateAndAddBill(pawn, template, new PendingRecipeItem { recipe = recipe, part = part });
             RefreshAllCaches();
         }
 
-        public void ConfirmTemplateForPawn(Pawn pawn, UserTemplate template)
+        /// <summary>创建原版 Bill_Medical 并加入 BillStack</summary>
+        private void CreateAndAddBill(Pawn pawn, UserTemplate template, PendingRecipeItem item)
         {
-            var record = GetOrCreateRecord(pawn, template);
-            record.status = ModificationStatus.Idle;
-            StartSurgeryForPawn(pawn, template, record);
-            RefreshAllCaches();
-        }
-
-        /// <summary>统一 Bill 创建入口：创建手术单 → 加入 BillStack → 设部位 → 写日志 → 发消息</summary>
-        private void CreateAndAddBill(Pawn pawn, UserTemplate template, PawnModificationRecord record,
-            PendingRecipeItem item)
-        {
-            int idx = template.resolvedRecipes.IndexOf(item.recipe);
-            var bill = ColonistModificationUtility.CreateBillForStep(item.recipe, pawn, template, idx);
+            var bill = new Bill_Medical(item.recipe, null);
             pawn.BillStack.AddBill(bill);
             if (item.part != null) bill.Part = item.part;
 
@@ -386,37 +351,6 @@ namespace ColonistModification
                 new LookTargets(pawn), MessageTypeDefOf.NeutralEvent, false);
         }
 
-        // ===== Notifications =====
-
-        public void NotifyStepCompleted(Pawn pawn, UserTemplate template, int stepIndex, string bodyPartLabel = null)
-        {
-            var record = GetOrCreateRecord(pawn, template);
-            var recipe = template.GetStep(stepIndex);
-            if (recipe != null)
-            {
-                string key = bodyPartLabel != null ? $"{recipe.defName}|{bodyPartLabel}" : recipe.defName;
-                record.completedRecipeKeys.Add(key);
-            }
-
-            if (record.completedRecipeKeys.Count >= template.StepCount)
-                record.status = ModificationStatus.Completed;
-        }
-
-        public void NotifyStepFailed(Pawn pawn, UserTemplate template, int stepIndex, string bodyPartLabel = null)
-        {
-            var record = GetOrCreateRecord(pawn, template);
-            record.failedStepIndex = stepIndex;
-            var recipe = template.GetStep(stepIndex);
-            if (recipe != null)
-            {
-                string key = bodyPartLabel != null ? $"{recipe.defName}|{bodyPartLabel}" : recipe.defName;
-                record.completedRecipeKeys.Add(key);
-            }
-
-            if (record.completedRecipeKeys.Count >= template.StepCount)
-                record.status = ModificationStatus.Completed;
-        }
-
         // ===== Queries =====
 
         public UserTemplate GetTemplateById(string id)
@@ -450,7 +384,6 @@ namespace ColonistModification
         /// <summary>返回全部 recipe+部位组合（含已完成），用于已完成 tab 显示全量清单</summary>
         public List<PendingRecipeItem> GetAllRecipeItems(Pawn pawn, UserTemplate template)
         {
-            var record = GetOrCreateRecord(pawn, template);
             var result = new List<PendingRecipeItem>();
             foreach (var recipe in template.resolvedRecipes)
             {
@@ -471,13 +404,20 @@ namespace ColonistModification
             return result;
         }
 
-        public bool HasModificationBillForRecipe(Pawn pawn, UserTemplate template, RecipeDef recipe, BodyPartRecord part = null)
+        public bool IsRecipePartCompleted(Pawn pawn, RecipeDef recipe, BodyPartRecord part)
+        {
+            if (recipe.addsHediff == null) return false;
+            if (part != null)
+                return pawn.health.hediffSet.hediffs.Any(h => h.def == recipe.addsHediff && h.Part == part);
+            return pawn.health.hediffSet.HasHediff(recipe.addsHediff);
+        }
+
+        public bool HasModificationBillForRecipe(Pawn pawn, RecipeDef recipe, BodyPartRecord part = null)
         {
             foreach (Bill bill in pawn.BillStack)
-                if (bill is Bill_ColonistModification modBill
-                    && modBill.templateId == template.id
-                    && modBill.recipe == recipe
-                    && (part == null || modBill.Part == part))
+                if (bill is Bill_Medical medBill
+                    && medBill.recipe == recipe
+                    && (part == null || medBill.Part == part))
                     return true;
             return false;
         }
@@ -529,7 +469,7 @@ namespace ColonistModification
                     foreach (var item in pendingRecipes)
                     {
                         recipesChecked++;
-                        if (HasModificationBillForRecipe(pawn, template, item.recipe, item.part))
+                        if (HasModificationBillForRecipe(pawn, item.recipe, item.part))
                         {
                             record.recipeStatus[item.Key] = "__HAS_BILL__";
                             continue;
