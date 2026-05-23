@@ -116,16 +116,19 @@ namespace ColonistModification
 
             bool anyPendingConfirmation = false;
             var readyNames = new List<string>();
+            var templates = AllTemplates.ToList();
 
             foreach (Map map in Find.Maps)
             {
                 if (!map.IsPlayerHome) continue;
 
-                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                var pawns = map.mapPawns.FreeColonistsAndPrisoners.ToList();
+                foreach (Pawn pawn in pawns)
                 {
                     if (globallyIgnoredPawns.Contains(pawn.thingIDNumber)) continue;
 
-                    var template = GetAssignedTemplate(pawn);
+                    var assignedId = GetAssignedTemplateId(pawn.thingIDNumber);
+                    var template = assignedId != null ? templates.FirstOrDefault(t => t.id == assignedId) : null;
                     if (template == null) continue;
                     if (disabledTemplates.Contains(template.id)) continue;
 
