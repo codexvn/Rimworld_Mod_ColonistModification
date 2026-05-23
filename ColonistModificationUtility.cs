@@ -56,17 +56,47 @@ namespace ColonistModification
             => CheckSurgeryConditions(pawn, recipe, map).can;
 
         /// <summary>
+        /// 收集所有活跃 Bill_ColonistModification 已绑定的物品（uniqueRequiredIngredients + xenogerm）。
+        /// 用于材料检查时排除已被其他手术预定的植入体/胚芽。
+        /// </summary>
+        public static HashSet<Thing> GetAllBoundItems()
+        {
+            var result = new HashSet<Thing>();
+            foreach (Map map in Find.Maps)
+            {
+                if (!map.IsPlayerHome) continue;
+                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                {
+                    for (int i = 0; i < pawn.BillStack.Count; i++)
+                    {
+                        if (pawn.BillStack[i] is Bill_ColonistModification modBill)
+                        {
+                            if (modBill.uniqueRequiredIngredients != null)
+                            {
+                                foreach (Thing t in modBill.uniqueRequiredIngredients)
+                                    result.Add(t);
+                            }
+                            if (modBill.xenogerm != null)
+                                result.Add(modBill.xenogerm);
+                        }
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// 预计算每个配方的药品和材料可用性（不含 reservedThings），跨 pawn 共享。
         /// </summary>
         public static Dictionary<string, (bool medicine, bool materials)> BuildMaterialCache(
-            Map map, IEnumerable<RecipeDef> recipes)
+            Map map, IEnumerable<RecipeDef> recipes, HashSet<Thing> boundItems = null)
         {
             var cache = new Dictionary<string, (bool, bool)>();
             foreach (var recipe in recipes)
             {
                 if (recipe == null || cache.ContainsKey(recipe.defName)) continue;
                 bool med = HasRequiredMedicine(recipe, map, null);
-                bool mat = HasRequiredMaterials(recipe, map, null);
+                bool mat = HasRequiredMaterials(recipe, map, null, boundItems);
                 cache[recipe.defName] = (med, mat);
             }
             return cache;
@@ -174,7 +204,8 @@ namespace ColonistModification
             return null;
         }
 
-        public static bool HasRequiredMaterials(RecipeDef recipe, Map map, HashSet<Thing> reservedThings = null)
+        public static bool HasRequiredMaterials(RecipeDef recipe, Map map, HashSet<Thing> reservedThings = null,
+            HashSet<Thing> boundItems = null)
         {
             if (recipe.ingredients == null || recipe.ingredients.Count == 0) return true;
             foreach (var ingredient in recipe.ingredients)
@@ -184,20 +215,21 @@ namespace ColonistModification
                     ingredient.filter.Allows(ThingDefOf.MedicineUltratech))
                     continue;
 
-                if (!HasEnoughIngredient(ingredient, map, reservedThings))
+                if (!HasEnoughIngredient(ingredient, map, reservedThings, boundItems))
                     return false;
             }
             return true;
         }
 
         private static bool HasEnoughIngredient(IngredientCount ingredient, Map map,
-            HashSet<Thing> reservedThings = null)
+            HashSet<Thing> reservedThings = null, HashSet<Thing> boundItems = null)
         {
             float required = ingredient.GetBaseCount();
             float found = 0f;
             foreach (Thing thing in map.listerThings.AllThings)
             {
                 if (reservedThings != null && reservedThings.Contains(thing)) continue;
+                if (boundItems != null && boundItems.Contains(thing)) continue;
                 if (ingredient.filter.Allows(thing) && !thing.IsForbidden(Faction.OfPlayer))
                 {
                     found += thing.stackCount;
@@ -208,7 +240,8 @@ namespace ColonistModification
         }
 
         public static Bill_ColonistModification CreateBillForStep(
-            RecipeDef recipe, Pawn patient, UserTemplate template, int stepIndex, int retryCount = 0)
+            RecipeDef recipe, Pawn patient, UserTemplate template, int stepIndex, int retryCount = 0,
+            HashSet<Thing> boundItems = null)
         {
             Bill_ColonistModification bill = new Bill_ColonistModification(recipe);
             bill.templateId = template.id;
@@ -224,12 +257,19 @@ namespace ColonistModification
             }
 
             if (recipe.defName == "ImplantXenogerm" && ModsConfig.BiotechActive)
-                TryBindXenogerm(bill, patient);
+            {
+                if (boundItems == null) boundItems = GetAllBoundItems();
+                TryBindXenogerm(bill, patient, boundItems);
+            }
+
+            if (boundItems == null) boundItems = GetAllBoundItems();
+            BindIngredients(bill, recipe, patient.Map, boundItems);
 
             return bill;
         }
 
-        private static void TryBindXenogerm(Bill_ColonistModification bill, Pawn patient)
+        private static void TryBindXenogerm(Bill_ColonistModification bill, Pawn patient,
+            HashSet<Thing> boundItems = null)
         {
             var map = patient.Map;
             if (map == null) return;
@@ -244,10 +284,44 @@ namespace ColonistModification
                 Xenogerm xenogerm = thing as Xenogerm;
                 if (xenogerm == null || xenogerm.IsForbidden(Faction.OfPlayer) || xenogerm.Position.Fogged(map))
                     continue;
+                if (boundItems != null && boundItems.Contains(xenogerm))
+                    continue;
                 if (targetXenotype != null && xenogerm.xenotypeName != targetXenotype.label)
                     continue;
                 bill.xenogerm = xenogerm;
                 return;
+            }
+        }
+
+        /// <summary>
+        /// 为手术 Bill 绑定地图上的具体植入体/材料物品。
+        /// 绑定的物品被加入 uniqueRequiredIngredients，游戏系统只收集这些特定物品用于手术。
+        /// </summary>
+        public static void BindIngredients(Bill_ColonistModification bill, RecipeDef recipe, Map map,
+            HashSet<Thing> boundItems = null)
+        {
+            if (recipe.ingredients == null || recipe.ingredients.Count == 0) return;
+
+            if (bill.uniqueRequiredIngredients == null)
+                bill.uniqueRequiredIngredients = new List<Thing>();
+
+            foreach (var ingredient in recipe.ingredients)
+            {
+                if (ingredient.filter.Allows(ThingDefOf.MedicineHerbal) ||
+                    ingredient.filter.Allows(ThingDefOf.MedicineIndustrial) ||
+                    ingredient.filter.Allows(ThingDefOf.MedicineUltratech))
+                    continue;
+
+                foreach (Thing thing in map.listerThings.AllThings)
+                {
+                    if (bill.uniqueRequiredIngredients.Contains(thing)) continue;
+                    if (boundItems != null && boundItems.Contains(thing)) continue;
+                    if (!ingredient.filter.Allows(thing)) continue;
+                    if (thing.IsForbidden(Faction.OfPlayer)) continue;
+
+                    bill.uniqueRequiredIngredients.Add(thing);
+                    break;
+                }
             }
         }
 

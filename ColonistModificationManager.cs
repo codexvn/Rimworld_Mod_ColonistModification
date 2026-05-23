@@ -161,12 +161,13 @@ namespace ColonistModification
                     allRecipes.Add(r);
             }
 
-            // === Pass 2: precompute material cache per map (single AllThings scan per recipe) ===
+            // === Pass 2: collect bound items + precompute material cache per map ===
+            var boundItems = ColonistModificationUtility.GetAllBoundItems();
             var materialCaches = new Dictionary<Map, Dictionary<string, (bool medicine, bool materials)>>();
             foreach (Map map in Find.Maps)
             {
                 if (!map.IsPlayerHome) continue;
-                materialCaches[map] = ColonistModificationUtility.BuildMaterialCache(map, allRecipes);
+                materialCaches[map] = ColonistModificationUtility.BuildMaterialCache(map, allRecipes, boundItems);
             }
 
             var reservedThings = new HashSet<Thing>();
@@ -421,7 +422,8 @@ namespace ColonistModification
             RecipeDef recipe)
         {
             int idx = template.resolvedRecipes.IndexOf(recipe);
-            var bill = ColonistModificationUtility.CreateBillForStep(recipe, pawn, template, idx);
+            var boundItems = ColonistModificationUtility.GetAllBoundItems();
+            var bill = ColonistModificationUtility.CreateBillForStep(recipe, pawn, template, idx, 0, boundItems);
             pawn.BillStack.AddBill(bill);
             record.status = ModificationStatus.InProgress;
 
