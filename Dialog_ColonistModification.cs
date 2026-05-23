@@ -717,9 +717,10 @@ namespace ColonistModification
             {
                 case ModificationStatus.Idle: return "⏳ 等待资源";
                 case ModificationStatus.PendingConfirmation: return "⚡ 等待确认";
+                case ModificationStatus.Completed: return "✓ 已完成";
                 case ModificationStatus.Dismissed: return "✗ 已忽略";
                 case ModificationStatus.Delayed: return "⏱ 已延迟";
-                default: return "?";
+                default: return "⏳ 等待资源";
             }
         }
 
