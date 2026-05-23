@@ -382,19 +382,34 @@ namespace ColonistModification
         }
 
         /// <summary>返回全部 recipe+部位组合（含已完成），用于已完成 tab 显示全量清单</summary>
+        /// <summary>返回全部 recipe+部位组合（含已完成），从身体定义展开而非 GetPartsToApplyOn（后者排除已有植入物的部位）</summary>
         public List<PendingRecipeItem> GetAllRecipeItems(Pawn pawn, UserTemplate template)
         {
+            var body = pawn.RaceProps.body;
             var result = new List<PendingRecipeItem>();
             foreach (var recipe in template.resolvedRecipes)
             {
                 if (recipe.targetsBodyPart)
                 {
-                    var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
-                    if (parts != null)
+                    var parts = new List<BodyPartRecord>();
+                    if (recipe.appliedOnFixedBodyParts != null)
                     {
-                        foreach (var part in parts)
-                            result.Add(new PendingRecipeItem { recipe = recipe, part = part });
+                        foreach (var partDef in recipe.appliedOnFixedBodyParts)
+                            parts.AddRange(body.GetPartsWithDef(partDef));
                     }
+                    if (recipe.appliedOnFixedBodyPartGroups != null)
+                    {
+                        foreach (var group in recipe.appliedOnFixedBodyPartGroups)
+                        {
+                            foreach (var part in body.AllParts)
+                            {
+                                if (part.groups != null && part.groups.Contains(group) && !parts.Contains(part))
+                                    parts.Add(part);
+                            }
+                        }
+                    }
+                    foreach (var part in parts)
+                        result.Add(new PendingRecipeItem { recipe = recipe, part = part });
                 }
                 else
                 {
@@ -408,7 +423,8 @@ namespace ColonistModification
         {
             if (recipe.addsHediff == null) return false;
             if (part != null)
-                return pawn.health.hediffSet.hediffs.Any(h => h.def == recipe.addsHediff && h.Part == part);
+                return pawn.health.hediffSet.hediffs.Any(h =>
+                    h.def == recipe.addsHediff && h.Part != null && h.Part.def == part.def && h.Part.Label == part.Label);
             return pawn.health.hediffSet.HasHediff(recipe.addsHediff);
         }
 
@@ -417,7 +433,7 @@ namespace ColonistModification
             foreach (Bill bill in pawn.BillStack)
                 if (bill is Bill_Medical medBill
                     && medBill.recipe == recipe
-                    && (part == null || medBill.Part == part))
+                    && (part == null || (medBill.Part != null && medBill.Part.def == part.def && medBill.Part.Label == part.Label)))
                     return true;
             return false;
         }
