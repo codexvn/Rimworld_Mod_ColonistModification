@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>殖民者制式改造</name>
+  <author>YourName</author>
+  <packageId>ColonistModification</packageId>
+  <description>
+    为游戏后期提供殖民者制式改造管理功能。
+
+    主要功能：
+    1. 模板系统 - 定义一套标准化的改造方案（基因植入、仿生体、植入物等）
+    2. 条件检测与通知 - 当条件满足时（物资齐全、技能达标），提示玩家是否开始手术
+    3. 延迟/忽略机制 - 玩家可以选择暂缓执行或不再提示
+    4. 失败自动重试 - 手术失败后自动重新安排，节省手动操作
+    5. 多步骤推进 - 按照模板顺序逐步完成所有改造
+
+    使用方法：
+    - 在菜单中打开"殖民者改造管理"窗口
+    - 创建或选择改造模板
+    - 设定目标殖民者和手术步骤
+    - 系统会自动检测条件并在就绪时通知你
+  </description>
+  <supportedVersions>
+    <li>1.5</li>
+  </supportedVersions>
+  <modDependencies>
+    <li>
+      <packageId>brrainz.harmony</packageId>
+      <displayName>Harmony</displayName>
+      <steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl>
+      <downloadUrl>https://github.com/pardeike/HarmonyRimWorld/releases/latest</downloadUrl>
+    </li>
+  </modDependencies>
+  <loadAfter>
+    <li>brrainz.harmony</li>
+  </loadAfter>
+</ModMetaData>
