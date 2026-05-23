@@ -36,10 +36,6 @@
         <Reference Include="Assembly-CSharp">
           <HintPath>..\..\..\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</HintPath>
         </Reference>
-        <Reference Include="0Harmony">
-          <HintPath>..\..\..\SteamLibrary\steamapps\workshop\content\294100\2009463077\1.5\Assemblies\0Harmony.dll</HintPath>
-          <Private>False</Private>
-        </Reference>
         <Reference Include="System"/>
         <Reference Include="System.Core"/>
         <Reference Include="System.Data"/>
@@ -64,6 +60,8 @@
         <Compile Include="ColonistModificationTemplateDef.cs" />
         <Compile Include="ColonistModificationUtility.cs" />
         <Compile Include="Dialog_ColonistModification.cs" />
+        <Compile Include="MainButtonWorker_ColonistModification.cs" />
+        <Compile Include="TemplateRuntimeSettings.cs" />
         <Compile Include="Properties\AssemblyInfo.cs"/>
     </ItemGroup>
     <ItemGroup>
@@ -71,6 +69,7 @@
       <Content Include="publish\1.6\Assemblies\ColonistModification.pdb" />
       <Content Include="publish\About\About.xml" />
       <Content Include="publish\Defs\ColonistModificationTemplateDef\Templates.xml" />
+      <Content Include="publish\Defs\MainButtonDef\MainButtons.xml" />
       <Content Include="publish\Languages\ChineseSimplified\Keyed\ColonistModification_Keys.xml" />
       <Content Include="README.MD" />
     </ItemGroup>

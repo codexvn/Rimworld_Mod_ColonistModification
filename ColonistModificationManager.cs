@@ -97,6 +97,13 @@ namespace ColonistModification
         private HashSet<int> globallyIgnoredPawns = new HashSet<int>();
 
         /// <summary>
+        /// 模版运行时覆盖：玩家在游戏中修改的参数，key为模版defName。
+        /// 与存档一起序列化，每个字段nullable表示"未覆盖则使用XML默认值"。
+        /// </summary>
+        private Dictionary<string, TemplateRuntimeSettings> templateOverrides =
+            new Dictionary<string, TemplateRuntimeSettings>();
+
+        /// <summary>
         /// 上次条件检查的tick计数，用于周期性检查
         /// </summary>
         private int lastCheckTick = 0;
@@ -170,7 +177,7 @@ namespace ColonistModification
                     continue;
 
                 // 检查殖民地财富阈值
-                if (template.minColonyWealth > 0 && colonyWealth < template.minColonyWealth)
+                if (GetEffectiveMinColonyWealth(template) > 0 && colonyWealth < GetEffectiveMinColonyWealth(template))
                     continue;
 
                 // 跳过没有有效步骤的模板
@@ -215,7 +222,7 @@ namespace ColonistModification
                                     RecipeDef nextRecipe = template.GetStep(nextStepIdx);
                                     if (nextRecipe != null && ColonistModificationUtility.CanPerformSurgery(pawn, nextRecipe, pawn.Map))
                                     {
-                                        if (template.requirePlayerConfirmation)
+                                        if (GetEffectiveRequirePlayerConfirmation(template))
                                         {
                                             if (record.status != ModificationStatus.PendingConfirmation)
                                             {
@@ -385,10 +392,11 @@ namespace ColonistModification
         {
             PawnModificationRecord record = GetOrCreateRecord(pawn, template);
             record.status = ModificationStatus.Delayed;
-            record.delayedUntilTick = Find.TickManager.TicksGame + (template.delayDays * 60000);
+            int effectiveDays = GetEffectiveDelayDays(template);
+            record.delayedUntilTick = Find.TickManager.TicksGame + (effectiveDays * 60000);
 
             Messages.Message(
-                $"已暂缓殖民者 {pawn.LabelShort} 的 '{template.label}' 改造，将在 {template.delayDays} 天后重新提示。",
+                $"已暂缓殖民者 {pawn.LabelShort} 的 '{template.label}' 改造，将在 {effectiveDays} 天后重新提示。",
                 new LookTargets(pawn), MessageTypeDefOf.NeutralEvent, false);
         }
 
@@ -458,6 +466,72 @@ namespace ColonistModification
                 return new List<PawnModificationRecord>();
 
             return new List<PawnModificationRecord>(pawnRecords[pawn.thingIDNumber]);
+        }
+
+        // ===== Runtime Template Settings =====
+
+        public TemplateRuntimeSettings GetRuntimeSettings(string defName)
+        {
+            templateOverrides.TryGetValue(defName, out var s);
+            return s;
+        }
+
+        public TemplateRuntimeSettings GetOrCreateRuntimeSettings(string defName)
+        {
+            if (!templateOverrides.TryGetValue(defName, out var s))
+            {
+                s = new TemplateRuntimeSettings();
+                templateOverrides[defName] = s;
+            }
+            return s;
+        }
+
+        public void ResetRuntimeSettings(string defName)
+        {
+            templateOverrides.Remove(defName);
+        }
+
+        public bool HasRuntimeOverrides(string defName)
+        {
+            return templateOverrides.ContainsKey(defName);
+        }
+
+        // ===== Effective Value Methods =====
+
+        public bool GetEffectiveAutoRetryOnFailure(RimWorld.ColonistModificationTemplateDef t)
+        {
+            var s = GetRuntimeSettings(t.defName);
+            return s?.GetAutoRetryOnFailure(t) ?? t.autoRetryOnFailure;
+        }
+
+        public int GetEffectiveMaxRetriesPerStep(RimWorld.ColonistModificationTemplateDef t)
+        {
+            var s = GetRuntimeSettings(t.defName);
+            return s?.GetMaxRetriesPerStep(t) ?? t.maxRetriesPerStep;
+        }
+
+        public float GetEffectiveMinColonyWealth(RimWorld.ColonistModificationTemplateDef t)
+        {
+            var s = GetRuntimeSettings(t.defName);
+            return s?.GetMinColonyWealth(t) ?? t.minColonyWealth;
+        }
+
+        public bool GetEffectiveRequirePlayerConfirmation(RimWorld.ColonistModificationTemplateDef t)
+        {
+            var s = GetRuntimeSettings(t.defName);
+            return s?.GetRequirePlayerConfirmation(t) ?? t.requirePlayerConfirmation;
+        }
+
+        public int GetEffectiveDelayDays(RimWorld.ColonistModificationTemplateDef t)
+        {
+            var s = GetRuntimeSettings(t.defName);
+            return s?.GetDelayDays(t) ?? t.delayDays;
+        }
+
+        public RimWorld.MedicineCategory GetEffectiveMinMedicineCategory(RimWorld.ColonistModificationTemplateDef t)
+        {
+            var s = GetRuntimeSettings(t.defName);
+            return s?.GetMinMedicineCategory(t) ?? t.minMedicineCategory;
         }
 
         /// <summary>
@@ -669,6 +743,26 @@ namespace ColonistModification
 
             Scribe_Collections.Look(ref disabledTemplates, "disabledTemplates", LookMode.Value);
             Scribe_Collections.Look(ref globallyIgnoredPawns, "globallyIgnoredPawns", LookMode.Value);
+
+            // Serialize template runtime overrides
+            List<string> overrideKeys = new List<string>();
+            List<TemplateRuntimeSettings> overrideValues = new List<TemplateRuntimeSettings>();
+            if (Scribe.mode == LoadSaveMode.Saving)
+            {
+                foreach (var kvp in templateOverrides)
+                {
+                    overrideKeys.Add(kvp.Key);
+                    overrideValues.Add(kvp.Value);
+                }
+            }
+            Scribe_Collections.Look(ref overrideKeys, "overrideKeys", LookMode.Value);
+            Scribe_Collections.Look(ref overrideValues, "overrideValues", LookMode.Deep);
+            if (Scribe.mode == LoadSaveMode.LoadingVars && overrideKeys != null && overrideValues != null)
+            {
+                templateOverrides = new Dictionary<string, TemplateRuntimeSettings>();
+                for (int i = 0; i < overrideKeys.Count && i < overrideValues.Count; i++)
+                    templateOverrides[overrideKeys[i]] = overrideValues[i];
+            }
         }
     }
 }

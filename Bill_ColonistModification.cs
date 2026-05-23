@@ -154,9 +154,11 @@ namespace ColonistModification
                 return;
             }
 
-            int maxRetries = template.maxRetriesPerStep;
+            var manager = ColonistModificationManager.Instance;
+            int maxRetries = manager?.GetEffectiveMaxRetriesPerStep(template) ?? template.maxRetriesPerStep;
+            bool autoRetry = manager?.GetEffectiveAutoRetryOnFailure(template) ?? template.autoRetryOnFailure;
 
-            if (template.autoRetryOnFailure && currentRetryCount < maxRetries)
+            if (autoRetry && currentRetryCount < maxRetries)
             {
                 // 自动重试：重新添加手术Bill
                 Bill_ColonistModification retryBill = new Bill_ColonistModification(recipe);
@@ -188,7 +190,7 @@ namespace ColonistModification
             else
             {
                 // 超过最大重试次数或未启用自动重试 → 跳过此步骤
-                string reason = template.autoRetryOnFailure
+                string reason = autoRetry
                     ? $"手术经过 {maxRetries} 次重试仍然失败，跳过此步骤。"
                     : "手术失败，跳过此步骤。";
 

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <MainButtonDef>
+    <defName>ColonistModification</defName>
+    <label>制式改造</label>
+    <description>打开殖民者制式改造管理窗口，查看模板状态和配置改造方案。</description>
+    <workerClass>ColonistModification.MainButtonWorker_ColonistModification</workerClass>
+  </MainButtonDef>
+</Defs>
