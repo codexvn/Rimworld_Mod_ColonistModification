@@ -10,7 +10,7 @@ namespace ColonistModification
     public class Dialog_ColonistModification : Window
     {
         private int selectedTab = 0;
-        private readonly string[] tabNames = { "模板概览", "待处理列表", "已完成记录", "模板编辑" };
+        private readonly string[] tabNames = { "模板概览", "待处理", "已完成", "日志", "模板编辑" };
         private Vector2 scrollPosition = Vector2.zero;
         private float cachedHeight = 0f;
 
@@ -49,7 +49,7 @@ namespace ColonistModification
             Widgets.Label(new Rect(0f, 0f, inRect.width, 35f), "殖民者制式改造管理");
             Text.Font = GameFont.Small;
 
-            float tabWidth = inRect.width / 4f;
+            float tabWidth = inRect.width / 5f;
             Rect tabRect = new Rect(0f, 40f, inRect.width, 30f);
             for (int i = 0; i < tabNames.Length; i++)
             {
@@ -72,7 +72,8 @@ namespace ColonistModification
                 case 0: DrawTemplateOverview(viewRect); break;
                 case 1: DrawPendingList(viewRect); break;
                 case 2: DrawCompletedList(viewRect); break;
-                case 3: DrawTemplateEditor(viewRect); break;
+                case 3: DrawSurgeryLog(viewRect); break;
+                case 4: DrawTemplateEditor(viewRect); break;
             }
 
             Widgets.EndScrollView();
@@ -217,36 +218,72 @@ namespace ColonistModification
                 return;
             }
 
-            var pending = Manager.GetPendingConfirmations();
-            if (!pending.Any())
+            var templates = AllTemplates;
+            var pendingPawns = new List<(Pawn pawn, UserTemplate template, PawnModificationRecord record, List<RecipeDef> recipes)>();
+
+            foreach (Map map in Find.Maps)
             {
-                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "当前没有等待确认或排队中的改造项目。");
+                if (!map.IsPlayerHome) continue;
+                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                {
+                    var tpl = Manager.GetAssignedTemplate(pawn);
+                    if (tpl == null) continue;
+                    var record = Manager.GetRecord(pawn, tpl);
+                    if (record == null) continue;
+
+                    var pending = tpl.resolvedRecipes
+                        .Where(r => !record.completedRecipeDefNames.Contains(r.defName))
+                        .ToList();
+                    if (pending.Count > 0)
+                        pendingPawns.Add((pawn, tpl, record, pending));
+                }
+            }
+
+            if (pendingPawns.Count == 0)
+            {
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "所有殖民者的手术均已添加。");
                 cachedHeight = 30f;
                 return;
             }
 
             float y = 0f;
             float w = rect.width;
-            float rowH = 24f;
+            float rowH = 22f;
+            Color pendingBg = new Color(0.4f, 0.6f, 1f, 0.1f);
 
-            foreach (var (pawn, template) in pending)
+            foreach (var (pawn, template, record, recipes) in pendingPawns)
             {
-                var record = Manager.GetRecord(pawn, template);
-                if (record == null) continue;
+                // pawn header
+                Widgets.Label(new Rect(0f, y, w, 22f), $"<b>{pawn.LabelShort}</b>  —  {template.name}");
+                y += 24f;
 
-                // Card background
-                Color bg = GetStatusColor(record);
-                bg.a = 0.1f;
-                Widgets.DrawBoxSolid(new Rect(0f, y, w, rowH + 28f), bg);
-                Widgets.DrawBoxSolid(new Rect(0f, y, 3f, rowH + 28f), GetStatusColor(record));
+                foreach (var recipe in recipes)
+                {
+                    Widgets.DrawBoxSolid(new Rect(10f, y, w - 10f, rowH), pendingBg);
 
-                // Info line
-                string label = $"{pawn.LabelShort}  —  {template.name}  —  {GetStatusLabel(record)}";
-                Widgets.Label(new Rect(8f, y + 3f, w * 0.7f, 20f), label);
+                    var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(
+                        pawn, recipe, pawn.Map, template.minMedicineCategory);
 
-                y += rowH;
-                DrawActionButtons(8f, y, pawn, template, record);
-                y += 28f + 4f;
+                    if (can)
+                    {
+                        GUI.color = Color.green;
+                        Widgets.Label(new Rect(18f, y + 1f, w * 0.55f, 20f), $"◯ {recipe.label} — 条件满足");
+                        GUI.color = Color.white;
+                        if (Widgets.ButtonText(new Rect(w - 90f, y + 1f, 80f, 20f), "添加"))
+                        {
+                            Manager.AddSurgeryForRecipe(pawn, template, recipe);
+                        }
+                    }
+                    else
+                    {
+                        GUI.color = Color.gray;
+                        Widgets.Label(new Rect(18f, y + 1f, w * 0.7f, 20f), $"◯ {recipe.label} — {reason ?? "条件不满足"}");
+                        GUI.color = Color.white;
+                    }
+
+                    y += rowH + 2f;
+                }
+                y += 6f;
             }
             cachedHeight = y + 40f;
         }
@@ -261,10 +298,68 @@ namespace ColonistModification
                 return;
             }
 
-            var completed = Manager.GetCompletedRecords();
-            if (!completed.Any())
+            var completedPawns = new List<(Pawn pawn, UserTemplate template, PawnModificationRecord record, List<RecipeDef> recipes)>();
+
+            foreach (Map map in Find.Maps)
             {
-                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "暂无已完成的改造记录。");
+                if (!map.IsPlayerHome) continue;
+                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                {
+                    var tpl = Manager.GetAssignedTemplate(pawn);
+                    if (tpl == null) continue;
+                    var record = Manager.GetRecord(pawn, tpl);
+                    if (record == null) continue;
+
+                    var completed = tpl.resolvedRecipes
+                        .Where(r => record.completedRecipeDefNames.Contains(r.defName))
+                        .ToList();
+                    if (completed.Count > 0)
+                        completedPawns.Add((pawn, tpl, record, completed));
+                }
+            }
+
+            if (completedPawns.Count == 0)
+            {
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "暂无已完成的手术。");
+                cachedHeight = 30f;
+                return;
+            }
+
+            float y = 0f;
+            float w = rect.width;
+            float rowH = 22f;
+
+            foreach (var (pawn, template, record, recipes) in completedPawns)
+            {
+                Widgets.Label(new Rect(0f, y, w, 22f), $"<b>{pawn.LabelShort}</b>  —  {template.name}");
+                y += 24f;
+
+                foreach (var recipe in recipes)
+                {
+                    GUI.color = new Color(0.3f, 0.8f, 0.3f);
+                    Widgets.Label(new Rect(18f, y + 1f, w - 18f, 20f), $"✓ {recipe.label}");
+                    GUI.color = Color.white;
+                    y += rowH + 2f;
+                }
+                y += 6f;
+            }
+            cachedHeight = y + 40f;
+        }
+
+        // ==================== Tab 3: 日志 ====================
+
+        private void DrawSurgeryLog(Rect rect)
+        {
+            if (Manager == null)
+            {
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "改造管理器未初始化。");
+                return;
+            }
+
+            var log = Manager.GetSurgeryLog();
+            if (log.Count == 0)
+            {
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "暂无手术记录。");
                 cachedHeight = 30f;
                 return;
             }
@@ -273,21 +368,28 @@ namespace ColonistModification
             float w = rect.width;
             float rowH = 24f;
 
-            foreach (var (pawn, template, record) in completed)
+            // 表头
+            Widgets.Label(new Rect(0f, y, 160f, 20f), "时间");
+            Widgets.Label(new Rect(160f, y, 140f, 20f), "殖民者");
+            Widgets.Label(new Rect(300f, y, 180f, 20f), "模板");
+            Widgets.Label(new Rect(480f, y, w - 480f, 20f), "手术");
+            y += 22f;
+
+            for (int i = log.Count - 1; i >= 0; i--)
             {
-                Widgets.DrawBoxSolid(new Rect(0f, y, w, rowH), new Color(0.3f, 0.8f, 0.3f, 0.1f));
-                Widgets.DrawBoxSolid(new Rect(0f, y, 3f, rowH), new Color(0.3f, 0.8f, 0.3f));
+                var entry = log[i];
+                int days = entry.tickCreated / 60000;
 
-                int completedCount = record.completedRecipeDefNames?.Count ?? 0;
-                string label = $"{pawn.LabelShort}  —  {template.name}  —  ✓ 已完成 ({completedCount}/{template.StepCount})";
-                Widgets.Label(new Rect(8f, y + 3f, w - 16f, 20f), label);
-
+                Widgets.Label(new Rect(0f, y, 160f, rowH), $"第 {days} 天");
+                Widgets.Label(new Rect(160f, y, 140f, rowH), entry.pawnName);
+                Widgets.Label(new Rect(300f, y, 180f, rowH), entry.templateName);
+                Widgets.Label(new Rect(480f, y, w - 480f, rowH), entry.recipeLabel);
                 y += rowH + 2f;
             }
             cachedHeight = y + 40f;
         }
 
-        // ==================== Tab 3: 模板编辑（无嵌套滚动） ====================
+        // ==================== Tab 4: 模板编辑 ====================
 
         private void DrawTemplateEditor(Rect rect)
         {
@@ -548,49 +650,6 @@ namespace ColonistModification
             }
         }
 
-        // ==================== Action Buttons ====================
-
-        private void DrawActionButtons(float x, float y, Pawn pawn, UserTemplate template, PawnModificationRecord record)
-        {
-            float bw = 90f; float gap = 6f;
-            if (record == null) return;
-            switch (record.status)
-            {
-                case ModificationStatus.PendingConfirmation:
-                    if (Widgets.ButtonText(new Rect(x, y, bw, 22f), "✓ 确认")) Manager.ConfirmTemplateForPawn(pawn, template);
-                    x += bw + gap;
-                    if (Widgets.ButtonText(new Rect(x, y, bw, 22f), "⏱ 稍后")) Manager.DelayTemplateForPawn(pawn, template);
-                    x += bw + gap;
-                    if (Widgets.ButtonText(new Rect(x, y, bw, 22f), "✗ 忽略")) Manager.DismissTemplateForPawn(pawn, template);
-                    break;
-                case ModificationStatus.InProgress:
-                    GUI.color = Color.green; LabelWithHeight(new Rect(x, y, 200f, 22f), "▶ 进行中..."); GUI.color = Color.white; break;
-                case ModificationStatus.Delayed:
-                {
-                    int rt = record.delayedUntilTick - Find.TickManager.TicksGame;
-                    LabelWithHeight(new Rect(x, y, 250f, 22f), $"已延迟，约 {rt / 60000f:F1} 天后提示");
-                    if (Widgets.ButtonText(new Rect(x + 260f, y, bw, 22f), "立即开始")) Manager.ConfirmTemplateForPawn(pawn, template);
-                    break;
-                }
-                case ModificationStatus.Dismissed:
-                    GUI.color = Color.gray; LabelWithHeight(new Rect(x, y, 200f, 22f), "已忽略"); GUI.color = Color.white;
-                    if (Widgets.ButtonText(new Rect(x + 210f, y, bw, 22f), "重新激活")) Manager.ConfirmTemplateForPawn(pawn, template);
-                    break;
-                case ModificationStatus.Completed:
-                    GUI.color = new Color(0.3f, 0.8f, 0.3f); LabelWithHeight(new Rect(x, y, 200f, 22f), "✓ 已完成"); GUI.color = Color.white; break;
-                case ModificationStatus.Queued:
-                    GUI.color = new Color(0.4f, 0.6f, 1f);
-                    LabelWithHeight(new Rect(x, y, 200f, 22f), "⏳ 排队等待可用医生…");
-                    GUI.color = Color.white;
-                    if (Widgets.ButtonText(new Rect(x + 210f, y, bw, 22f), "取消排队"))
-                        Manager.DismissTemplateForPawn(pawn, template);
-                    break;
-                case ModificationStatus.Idle:
-                    if (Widgets.ButtonText(new Rect(x, y, bw + 20f, 22f), "强制开始")) Manager.ConfirmTemplateForPawn(pawn, template);
-                    break;
-            }
-        }
-
         // ==================== Helpers ====================
 
         private void ConfirmAllPending()
@@ -621,7 +680,6 @@ namespace ColonistModification
                 case ModificationStatus.InProgress: return "▶ 进行中";
                 case ModificationStatus.Completed: return "✓ 已完成";
                 case ModificationStatus.Dismissed: return "✗ 已忽略";
-                case ModificationStatus.Queued: return "⏳ 排队等待";
                 case ModificationStatus.Delayed: return "⏱ 已延迟";
                 default: return "?";
             }
@@ -635,7 +693,6 @@ namespace ColonistModification
                 case ModificationStatus.PendingConfirmation: return new Color(1f, 0.84f, 0f);
                 case ModificationStatus.InProgress: return Color.green;
                 case ModificationStatus.Completed: return new Color(0.3f, 0.8f, 0.3f);
-                case ModificationStatus.Queued: return new Color(0.4f, 0.6f, 1f);
                 case ModificationStatus.Dismissed: return Color.gray;
                 case ModificationStatus.Delayed: return new Color(0.5f, 0.5f, 1f);
                 default: return Color.white;
