@@ -107,14 +107,16 @@ PendingRecipeItem                — recipe+部位展开后的单条待处理项
                           CheckAllTemplates()
                           （仅 tick 循环，actOnResults=true）
                                     │
+                    统计 activeSurgeries（全局已有手术单数）
                     遍历 pawn → 读缓存 → can?
                                     │
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
               确认模式         非确认模式        条件不满足
-              弹一个窗         多个 recipe       跳过
-              return           逐个 CreateAnd    继续下一个
-                                AddBill
+              ≥阈值: return    ≥阈值: return     跳过继续下一个
+              <阈值: 弹窗      <阈值: CreateAnd
+              PendingConf      AddBill++
+              return           activeSurgeries++
 ```
 
 ### 三、手术完成判定
@@ -146,11 +148,15 @@ CreateAndAddBill(pawn, template, item)
 ```
 
 调用路径：
-- **tick 非确认模式**：`CheckAllTemplates` 直接调，一个 tick 可加多个
+- **tick 非确认模式**：`CheckAllTemplates` 检查 `activeSurgeries < MaxConcurrentSurgeries` 后调
 - **tick 确认模式**：弹窗 → 玩家点"开始改造" → 回调调 `CreateAndAddBill`
 - **手动添加**：UI"添加"按钮 → `AddSurgeryForRecipe` → `CreateAndAddBill`
 
-### 五、缓存值约定
+### 五、并发控制
+
+`MaxConcurrentSurgeries`（当前=1）限制全局同时进行的手术数。`CheckAllTemplates` 开头遍历所有 BillStack 统计匹配本 mod 配方的 `Bill_Medical` 数量 → `activeSurgeries`。确认弹窗和直接加手术均检查 `activeSurgeries >= 阈值`，达到则 `return` 停止处理。手术后游戏自动移除 Bill → 下次 tick 计数下降 → 自动解封。
+
+### 六、缓存值约定
 
 `record.recipeStatus[key]` 的三个含义：
 
@@ -162,7 +168,7 @@ CreateAndAddBill(pawn, template, item)
 
 此约定在 `RefreshAllCaches` 中写入，UI 的 `DrawPendingList` 和 tick 的 `CheckAllTemplates` 都从缓存读取，不再调 `CheckSurgeryConditions`。
 
-### 六、UI 渲染
+### 七、UI 渲染
 
 5 个 tab，在 `DoWindowContents` 中按 `selectedTab` switch：
 - **Tab 0 模板概览**：每殖民者一行，下拉选模板，显示 `已完成X 未完成Y (共Z台手术)`，hover 显示失败原因
@@ -173,7 +179,7 @@ CreateAndAddBill(pawn, template, item)
 
 刷新按钮在内容渲染前检测点击，确保同一帧数据更新。
 
-### 七、存档策略
+### 八、存档策略
 
 **序列化**（.rws 存档文件）：
 - `assignedTemplateIds: Dictionary<int, string>` — 殖民者分配了哪个模板
@@ -188,7 +194,7 @@ CreateAndAddBill(pawn, template, item)
 
 加载存档时 `ExposeData` 会清除指向不存在模板的失效分配。
 
-### 八、关键方法速查
+### 九、关键方法速查
 
 | 方法 | 文件 | 作用 |
 |------|------|------|
@@ -199,7 +205,8 @@ CreateAndAddBill(pawn, template, item)
 | `GetAllRecipeItems(pawn, template)` | Manager | 返回全部 recipe+部位列表（含已完成，用于已完成 tab 和概览计数） |
 | `IsRecipePartCompleted(pawn, recipe, part)` | Manager | 查殖民者身上 hediff 判断手术是否完成 |
 | `HasModificationBillForRecipe(pawn, recipe, part)` | Manager | 查 BillStack 上是否已有对应手术单 |
-| `CreateAndAddBill(pawn, template, item)` | Manager | 创建原版 Bill_Medical 并加入 BillStack |
+| `CreateAndAddBill(pawn, template, item)` | Manager | 创建 Bill_Medical 加入 BillStack，用 activeSurgeries 计数控制并发 |
+| `MaxConcurrentSurgeries` | Manager | 全局并发上限常量（当前=1） |
 | `AssignTemplate / UnassignTemplate` | Manager | 分配/取消模板，调 RefreshAllCaches |
 | `GetOrCreateRecord(pawn, template)` | Manager | 两级查找（pawnID → templateID），自动创建 |
 | `CheckSurgeryConditions(pawn, recipe, map, minMed)` | Utility | 检查手术条件（部位、医生、药品、材料） |
@@ -207,7 +214,7 @@ CreateAndAddBill(pawn, template, item)
 | `ResolveReferences()` | UserTemplate | 从 DefDatabase 解析 recipeDefNames → resolvedRecipes |
 | `PreOpen()` | Dialog | 窗口首帧前调 ForceCheckNow 确保数据就绪 |
 
-### 九、文件映射
+### 十、文件映射
 
 | 文件 | 用途 |
 |------|------|
