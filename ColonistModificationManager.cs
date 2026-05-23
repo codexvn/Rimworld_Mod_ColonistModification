@@ -165,10 +165,6 @@ namespace ColonistModification
             var allRecipeDefs = new HashSet<RecipeDef>(templates.SelectMany(t => t.resolvedRecipes));
             int activeSurgeries = 0;
 
-            // 全局是否已有等待确认的弹窗
-            bool hasPendingConfirmation = pawnRecords.Values
-                .Any(list => list.Any(r => r.status == ModificationStatus.PendingConfirmation));
-
             // 统计当前已有手术单
             foreach (Map map in Find.Maps)
             {
@@ -241,7 +237,6 @@ namespace ColonistModification
 
                         if (template.requirePlayerConfirmation)
                         {
-                            if (hasPendingConfirmation) continue;
                             if (activeSurgeries >= MaxConcurrentSurgeries) return;
                             record.status = ModificationStatus.PendingConfirmation;
                             var capturedPawn = pawn;

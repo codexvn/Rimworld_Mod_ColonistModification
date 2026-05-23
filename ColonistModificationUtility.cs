@@ -26,6 +26,9 @@ namespace ColonistModification
                     return (false, $"无可用身体部位 (手术部位: {GetRecipeBodyPartLabel(recipe)})");
             }
 
+            if (recipe.defName == "ImplantXenogerm" && !HasXenogermAvailable(map))
+                return (false, "缺少材料: 异种胚芽");
+
             if (!recipe.Worker.AvailableOnNow(pawn, null))
                 return (false, "手术当前不可用");
 
@@ -40,6 +43,14 @@ namespace ColonistModification
                 return (false, matReason);
 
             return (true, null);
+        }
+
+        private static bool HasXenogermAvailable(Map map)
+        {
+            foreach (Thing thing in map.listerThings.ThingsOfDef(ThingDefOf.Xenogerm))
+                if (!thing.IsForbidden(Faction.OfPlayer) && !thing.Position.Fogged(map))
+                    return true;
+            return false;
         }
 
         public static bool HasAvailableSurgeon(RecipeDef recipe, Map map)
