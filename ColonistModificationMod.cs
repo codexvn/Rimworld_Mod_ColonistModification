@@ -4,9 +4,6 @@ using Verse;
 
 namespace ColonistModification
 {
-    /// <summary>
-    /// Mod 入口：连接 ModSettings，提供跨存档模板配置。
-    /// </summary>
     public class ColonistModificationMod : Mod
     {
         public static ColonistModificationMod Instance;
@@ -35,11 +32,6 @@ namespace ColonistModification
         public override string SettingsCategory()
         {
             return "制式改造";
-        }
-
-        public override void WriteSettings()
-        {
-            base.WriteSettings();
         }
     }
 }

@@ -79,7 +79,10 @@ namespace ColonistModification
 
             Rect bottomRect = new Rect(0f, inRect.height - 30f, inRect.width, 30f);
             if (Widgets.ButtonText(new Rect(bottomRect.x, bottomRect.y, 120f, 28f), "刷新状态"))
+            {
                 scrollPosition = Vector2.zero;
+                Manager?.ForceCheckNow();
+            }
             if (Widgets.ButtonText(new Rect(bottomRect.x + 130f, bottomRect.y, 160f, 28f), "一键确认全部待处理"))
                 ConfirmAllPending();
             if (Widgets.ButtonText(new Rect(bottomRect.x + 300f, bottomRect.y, 100f, 28f), "关闭"))

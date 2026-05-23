@@ -39,10 +39,6 @@ namespace ColonistModification
         {
         }
 
-        public Bill_ColonistModification(RecipeDef recipe, List<Thing> uniqueIngredients) : base(recipe, uniqueIngredients)
-        {
-        }
-
         /// <summary>
         /// 重写手术完成通知，实现失败重试和步骤推进
         ///
@@ -107,27 +103,23 @@ namespace ColonistModification
             }
         }
 
-        /// <summary>
-        /// 手术成功后的处理：推进到模板下一步或标记完成
-        /// </summary>
         private void OnSurgerySucceeded(Pawn patient, UserTemplate template, string templateId, int stepIndex, BillStack stack)
         {
             if (template == null)
                 return;
 
-            // 获取下一个待执行步骤索引
+            ColonistModificationManager.Instance?.NotifyStepCompleted(patient, template, stepIndex);
+
             int nextStep = ColonistModificationUtility.GetNextStepIndex(patient, template);
 
             if (nextStep < 0)
             {
-                // 所有步骤完成！
                 Messages.Message(
                     $"殖民者 {patient.LabelShort} 已完成制式改造模板 '{template.name}' 的所有步骤！",
                     new LookTargets(patient), MessageTypeDefOf.PositiveEvent, false);
             }
             else
             {
-                // 添加下一步骤的手术Bill
                 RecipeDef nextRecipe = template.GetStep(nextStep);
                 if (nextRecipe != null)
                 {
@@ -140,9 +132,6 @@ namespace ColonistModification
                         new LookTargets(patient), MessageTypeDefOf.NeutralEvent, false);
                 }
             }
-
-            // 通知Manager刷新状态
-            ColonistModificationManager.Instance?.NotifyStepCompleted(patient, template, stepIndex);
         }
 
         /// <summary>

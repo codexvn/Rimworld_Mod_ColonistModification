@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using RimWorld;
@@ -8,20 +7,8 @@ namespace ColonistModification
 {
     public static class ColonistModificationUtility
     {
-        public static bool PawnMatchesTemplate(Pawn pawn, UserTemplate template)
-        {
-            if (pawn == null || template == null) return false;
-            if (!pawn.RaceProps.Humanlike) return false;
-            if (template.colonistsOnly && !pawn.IsColonist) return false;
-            if (!template.includeSlaves && pawn.IsSlave) return false;
-            return true;
-        }
-
-        /// <summary>
-        /// 检查手术条件，返回 (是否满足, 失败原因)。
-        /// </summary>
         public static (bool can, string reason) CheckSurgeryConditions(Pawn pawn, RecipeDef recipe, Map map,
-            HashSet<Thing> reservedThings = null)
+            MedicineCategory minMedicineCategory = MedicineCategory.None)
         {
             if (pawn == null || recipe == null || map == null)
                 return (false, "无效参数");
@@ -42,112 +29,11 @@ namespace ColonistModification
             if (!HasAvailableSurgeon(recipe, map))
                 return (false, "无可用医生（需满足技能且非倒地/失控）");
 
-            if (!HasRequiredMedicine(recipe, map, pawn))
+            if (!HasRequiredMedicine(recipe, map, minMedicineCategory))
                 return (false, "缺少所需药品");
 
-            if (!HasRequiredMaterials(recipe, map, reservedThings))
+            if (!HasRequiredMaterials(recipe, map))
                 return (false, "缺少手术所需材料");
-
-            return (true, null);
-        }
-
-        /// <summary>保留旧接口兼容</summary>
-        public static bool CanPerformSurgery(Pawn pawn, RecipeDef recipe, Map map)
-            => CheckSurgeryConditions(pawn, recipe, map).can;
-
-        /// <summary>
-        /// 收集所有活跃 Bill_ColonistModification 已绑定的物品（uniqueRequiredIngredients + xenogerm）。
-        /// 用于材料检查时排除已被其他手术预定的植入体/胚芽。
-        /// </summary>
-        public static HashSet<Thing> GetAllBoundItems()
-        {
-            var result = new HashSet<Thing>();
-            foreach (Map map in Find.Maps)
-            {
-                if (!map.IsPlayerHome) continue;
-                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
-                {
-                    for (int i = 0; i < pawn.BillStack.Count; i++)
-                    {
-                        if (pawn.BillStack[i] is Bill_ColonistModification modBill)
-                        {
-                            if (modBill.uniqueRequiredIngredients != null)
-                            {
-                                foreach (Thing t in modBill.uniqueRequiredIngredients)
-                                    result.Add(t);
-                            }
-                            if (modBill.xenogerm != null)
-                                result.Add(modBill.xenogerm);
-                        }
-                    }
-                }
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// 预计算每个配方的药品和材料可用性（不含 reservedThings），跨 pawn 共享。
-        /// </summary>
-        public static Dictionary<string, (bool medicine, bool materials)> BuildMaterialCache(
-            Map map, IEnumerable<RecipeDef> recipes, HashSet<Thing> boundItems = null)
-        {
-            var cache = new Dictionary<string, (bool, bool)>();
-            foreach (var recipe in recipes)
-            {
-                if (recipe == null || cache.ContainsKey(recipe.defName)) continue;
-                bool med = HasRequiredMedicine(recipe, map, null);
-                bool mat = HasRequiredMaterials(recipe, map, null, boundItems);
-                cache[recipe.defName] = (med, mat);
-            }
-            return cache;
-        }
-
-        /// <summary>
-        /// 快速条件检查：pawn 特异项 + materialCache 共享项。跳过 AllThings 遍历。
-        /// reservedThings 有内容时对材料做实时检查（罕见情况）。
-        /// </summary>
-        public static (bool can, string reason) CheckSurgeryConditionsFast(Pawn pawn, RecipeDef recipe, Map map,
-            Dictionary<string, (bool medicine, bool materials)> materialCache,
-            HashSet<Thing> reservedThings = null)
-        {
-            if (pawn == null || recipe == null || map == null)
-                return (false, "无效参数");
-            if (pawn.Dead)
-                return (false, "殖民者已死亡");
-            if (!pawn.Spawned)
-                return (false, "殖民者不在当前地图");
-            if (recipe.Worker == null)
-                return (false, "手术定义无效");
-
-            var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
-            if (parts == null || !parts.Any())
-                return (false, "无可用的身体部位");
-
-            if (!recipe.Worker.AvailableOnNow(pawn, null))
-                return (false, "手术当前不可用");
-
-            if (!HasAvailableSurgeon(recipe, map))
-                return (false, "无可用医生（需满足技能且非倒地/失控）");
-
-            if (materialCache.TryGetValue(recipe.defName, out var cached))
-            {
-                if (!cached.medicine)
-                    return (false, "缺少所需药品");
-                if (!cached.materials)
-                {
-                    if (reservedThings == null || reservedThings.Count == 0)
-                        return (false, "缺少手术所需材料");
-                    if (!HasRequiredMaterials(recipe, map, reservedThings))
-                        return (false, "缺少手术所需材料");
-                }
-            }
-            else
-            {
-                if (!HasRequiredMedicine(recipe, map, pawn))
-                    return (false, "缺少所需药品");
-                if (!HasRequiredMaterials(recipe, map, reservedThings))
-                    return (false, "缺少手术所需材料");
-            }
 
             return (true, null);
         }
@@ -165,47 +51,48 @@ namespace ColonistModification
             return false;
         }
 
-        public static bool HasRequiredMedicine(RecipeDef recipe, Map map, Pawn patient)
+        public static bool HasRequiredMedicine(RecipeDef recipe, Map map, MedicineCategory minCategory = MedicineCategory.None)
         {
-            // 如果配方需要药物，检查是否有足够药物
             if (recipe.ingredients == null) return true;
+
+            bool needsMedicine = false;
             foreach (var ing in recipe.ingredients)
             {
                 if (ing.filter.Allows(ThingDefOf.MedicineHerbal) ||
                     ing.filter.Allows(ThingDefOf.MedicineIndustrial) ||
                     ing.filter.Allows(ThingDefOf.MedicineUltratech))
                 {
-                    var best = GetBestAvailableMedicine(map);
-                    if (best == null) return false;
+                    needsMedicine = true;
+                    break;
                 }
             }
-            return true;
-        }
+            if (!needsMedicine) return true;
 
-        public static ThingDef GetBestAvailableMedicine(Map map)
-        {
-            var candidates = new List<ThingDef>
-            {
-                ThingDefOf.MedicineUltratech,
-                ThingDefOf.MedicineIndustrial,
-                ThingDefOf.MedicineHerbal
-            };
-
+            var candidates = new[] { ThingDefOf.MedicineUltratech, ThingDefOf.MedicineIndustrial, ThingDefOf.MedicineHerbal };
             foreach (var medDef in candidates)
             {
                 if (medDef == null) continue;
+                if (GetMedicineCategory(medDef) < minCategory) continue;
+
                 var medicines = map.listerThings.ThingsOfDef(medDef);
                 foreach (Thing med in medicines)
                 {
                     if (!med.IsForbidden(Faction.OfPlayer) && med.stackCount > 0)
-                        return medDef;
+                        return true;
                 }
             }
-            return null;
+            return false;
         }
 
-        public static bool HasRequiredMaterials(RecipeDef recipe, Map map, HashSet<Thing> reservedThings = null,
-            HashSet<Thing> boundItems = null)
+        private static MedicineCategory GetMedicineCategory(ThingDef medDef)
+        {
+            if (medDef == ThingDefOf.MedicineUltratech) return MedicineCategory.Glitter;
+            if (medDef == ThingDefOf.MedicineIndustrial) return MedicineCategory.Industrial;
+            if (medDef == ThingDefOf.MedicineHerbal) return MedicineCategory.Herbal;
+            return MedicineCategory.None;
+        }
+
+        public static bool HasRequiredMaterials(RecipeDef recipe, Map map)
         {
             if (recipe.ingredients == null || recipe.ingredients.Count == 0) return true;
             foreach (var ingredient in recipe.ingredients)
@@ -215,21 +102,18 @@ namespace ColonistModification
                     ingredient.filter.Allows(ThingDefOf.MedicineUltratech))
                     continue;
 
-                if (!HasEnoughIngredient(ingredient, map, reservedThings, boundItems))
+                if (!HasEnoughIngredient(ingredient, map))
                     return false;
             }
             return true;
         }
 
-        private static bool HasEnoughIngredient(IngredientCount ingredient, Map map,
-            HashSet<Thing> reservedThings = null, HashSet<Thing> boundItems = null)
+        private static bool HasEnoughIngredient(IngredientCount ingredient, Map map)
         {
             float required = ingredient.GetBaseCount();
             float found = 0f;
             foreach (Thing thing in map.listerThings.AllThings)
             {
-                if (reservedThings != null && reservedThings.Contains(thing)) continue;
-                if (boundItems != null && boundItems.Contains(thing)) continue;
                 if (ingredient.filter.Allows(thing) && !thing.IsForbidden(Faction.OfPlayer))
                 {
                     found += thing.stackCount;
@@ -240,8 +124,7 @@ namespace ColonistModification
         }
 
         public static Bill_ColonistModification CreateBillForStep(
-            RecipeDef recipe, Pawn patient, UserTemplate template, int stepIndex, int retryCount = 0,
-            HashSet<Thing> boundItems = null)
+            RecipeDef recipe, Pawn patient, UserTemplate template, int stepIndex, int retryCount = 0)
         {
             Bill_ColonistModification bill = new Bill_ColonistModification(recipe);
             bill.templateId = template.id;
@@ -257,19 +140,12 @@ namespace ColonistModification
             }
 
             if (recipe.defName == "ImplantXenogerm" && ModsConfig.BiotechActive)
-            {
-                if (boundItems == null) boundItems = GetAllBoundItems();
-                TryBindXenogerm(bill, patient, boundItems);
-            }
-
-            if (boundItems == null) boundItems = GetAllBoundItems();
-            BindIngredients(bill, recipe, patient.Map, boundItems);
+                TryBindXenogerm(bill, patient);
 
             return bill;
         }
 
-        private static void TryBindXenogerm(Bill_ColonistModification bill, Pawn patient,
-            HashSet<Thing> boundItems = null)
+        private static void TryBindXenogerm(Bill_ColonistModification bill, Pawn patient)
         {
             var map = patient.Map;
             if (map == null) return;
@@ -284,62 +160,11 @@ namespace ColonistModification
                 Xenogerm xenogerm = thing as Xenogerm;
                 if (xenogerm == null || xenogerm.IsForbidden(Faction.OfPlayer) || xenogerm.Position.Fogged(map))
                     continue;
-                if (boundItems != null && boundItems.Contains(xenogerm))
-                    continue;
                 if (targetXenotype != null && xenogerm.xenotypeName != targetXenotype.label)
                     continue;
                 bill.xenogerm = xenogerm;
                 return;
             }
-        }
-
-        /// <summary>
-        /// 为手术 Bill 绑定地图上的具体植入体/材料物品。
-        /// 绑定的物品被加入 uniqueRequiredIngredients，游戏系统只收集这些特定物品用于手术。
-        /// </summary>
-        public static void BindIngredients(Bill_ColonistModification bill, RecipeDef recipe, Map map,
-            HashSet<Thing> boundItems = null)
-        {
-            if (recipe.ingredients == null || recipe.ingredients.Count == 0) return;
-
-            if (bill.uniqueRequiredIngredients == null)
-                bill.uniqueRequiredIngredients = new List<Thing>();
-
-            foreach (var ingredient in recipe.ingredients)
-            {
-                if (ingredient.filter.Allows(ThingDefOf.MedicineHerbal) ||
-                    ingredient.filter.Allows(ThingDefOf.MedicineIndustrial) ||
-                    ingredient.filter.Allows(ThingDefOf.MedicineUltratech))
-                    continue;
-
-                foreach (Thing thing in map.listerThings.AllThings)
-                {
-                    if (bill.uniqueRequiredIngredients.Contains(thing)) continue;
-                    if (boundItems != null && boundItems.Contains(thing)) continue;
-                    if (!ingredient.filter.Allows(thing)) continue;
-                    if (thing.IsForbidden(Faction.OfPlayer)) continue;
-
-                    bill.uniqueRequiredIngredients.Add(thing);
-                    break;
-                }
-            }
-        }
-
-        public static bool HasCompletedTemplate(Pawn pawn, UserTemplate template)
-        {
-            if (pawn == null || template == null) return false;
-            var record = ColonistModificationManager.Instance?.GetRecord(pawn, template);
-            if (record != null && record.completedRecipeDefNames.Count >= template.StepCount)
-                return true;
-            // Fallback: check hediffs
-            foreach (var recipe in template.resolvedRecipes)
-            {
-                if (record != null && record.completedRecipeDefNames.Contains(recipe.defName))
-                    continue;
-                if (recipe.addsHediff != null && !pawn.health.hediffSet.HasHediff(recipe.addsHediff))
-                    return false;
-            }
-            return true;
         }
 
         public static int GetNextStepIndex(Pawn pawn, UserTemplate template)
@@ -355,46 +180,10 @@ namespace ColonistModification
             return -1;
         }
 
-        public static Pawn FindBestSurgeon(Map map, RecipeDef recipe, Pawn patient)
-        {
-            Pawn bestSurgeon = null;
-            float bestSkill = -1f;
-
-            foreach (Pawn pawn in map.mapPawns.FreeColonists)
-            {
-                if (pawn == patient) continue;
-                if (!pawn.health.capacities.CapableOf(PawnCapacityDefOf.Manipulation) ||
-                    pawn.Downed || pawn.InMentalState) continue;
-
-                float skillLevel = 0f;
-                if (recipe.workSkill != null && pawn.skills != null)
-                    skillLevel = pawn.skills.GetSkill(recipe.workSkill).Level;
-
-                if (skillLevel > bestSkill)
-                {
-                    bestSkill = skillLevel;
-                    bestSurgeon = pawn;
-                }
-            }
-            return bestSurgeon;
-        }
-
-        /// <summary>
-        /// 动态获取所有植入物配方，按身体部位分组。
-        /// 通过 RecipeWorker 类型筛选（而非 defName 前缀），mod 添加的植入物自动出现。
-        /// 返回：部位组标签 -> 该组下的配方列表。
-        /// </summary>
-        private static Dictionary<string, List<RecipeDef>> cachedImplantGroups;
-        private static BodyDef cachedImplantBodyDef;
-
         public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup(BodyDef bodyDef = null)
         {
             var body = bodyDef ?? BodyDefOf.Human;
-            if (cachedImplantGroups != null && cachedImplantBodyDef == body)
-                return cachedImplantGroups;
-
             var result = new Dictionary<string, List<RecipeDef>>();
-            // 缓存：BodyPartGroupDef -> 该组下所有 BodyPartRecord 的标签
             var groupToPartLabels = new Dictionary<BodyPartGroupDef, HashSet<string>>();
 
             foreach (var recipe in DefDatabase<RecipeDef>.AllDefs)
@@ -405,7 +194,6 @@ namespace ColonistModification
 
                 var groupNames = new List<string>();
 
-                // 只取第一个部位组，展开为具体左右部位标签。避免同一部位因属于多个组而重复。
                 if (recipe.appliedOnFixedBodyPartGroups != null && recipe.appliedOnFixedBodyPartGroups.Count > 0)
                 {
                     var g = recipe.appliedOnFixedBodyPartGroups[0];
@@ -422,12 +210,10 @@ namespace ColonistModification
                     groupNames.AddRange(labels);
                 }
 
-                // 通过具体部位定义
                 if (recipe.appliedOnFixedBodyParts != null)
                 {
                     foreach (var p in recipe.appliedOnFixedBodyParts)
                     {
-                        // 查看该部位在人体中的实际标签
                         var parts = body.GetPartsWithDef(p);
                         if (parts.Count > 0)
                         {
@@ -456,15 +242,7 @@ namespace ColonistModification
             foreach (var list in result.Values)
                 list.Sort((a, b) => a.label.CompareTo(b.label));
 
-            cachedImplantGroups = result;
-            cachedImplantBodyDef = body;
             return result;
-        }
-
-        public static void ClearImplantCache()
-        {
-            cachedImplantGroups = null;
-            cachedImplantBodyDef = null;
         }
 
         public static List<RecipeDef> GetXenogermRecipes()
