@@ -124,6 +124,8 @@ namespace ColonistModification
 
             var templates = AllTemplates.ToList();
             RefreshPawnCache();
+            // 本轮已预留的物资，防止同一植入物分配给多人
+            var reservedThings = new HashSet<Thing>();
 
             foreach (Map map in Find.Maps)
             {
@@ -168,7 +170,7 @@ namespace ColonistModification
 
                             foreach (var recipe in pending)
                             {
-                                var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(pawn, recipe, pawn.Map);
+                                var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(pawn, recipe, pawn.Map, reservedThings);
                                 if (can)
                                 {
                                     anyReady = true;
@@ -206,6 +208,7 @@ namespace ColonistModification
                                 else
                                 {
                                     StartSurgeryForPawn(pawn, template, record);
+                                    ReserveRecipeIngredients(template, record, reservedThings);
                                 }
                             }
                             break;
@@ -390,6 +393,39 @@ namespace ColonistModification
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// 预留手术需要的物资，防止同一植入物被分配给多人。
+        /// </summary>
+        private void ReserveRecipeIngredients(UserTemplate template, PawnModificationRecord record,
+            HashSet<Thing> reservedThings)
+        {
+            RecipeDef recipe = null;
+            foreach (var r in template.resolvedRecipes)
+            {
+                if (!record.completedRecipeDefNames.Contains(r.defName))
+                { recipe = r; break; }
+            }
+            if (recipe == null) return;
+            if (recipe.ingredients == null) return;
+
+            foreach (var map in Find.Maps)
+            {
+                if (!map.IsPlayerHome) continue;
+                foreach (var ing in recipe.ingredients)
+                {
+                    foreach (var thing in map.listerThings.AllThings)
+                    {
+                        if (reservedThings.Contains(thing)) continue;
+                        if (!thing.IsForbidden(Faction.OfPlayer) && ing.filter.Allows(thing))
+                        {
+                            reservedThings.Add(thing);
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         public List<PawnModificationRecord> GetAllRecordsForPawn(Pawn pawn)

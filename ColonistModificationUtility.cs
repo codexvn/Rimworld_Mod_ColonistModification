@@ -20,7 +20,8 @@ namespace ColonistModification
         /// <summary>
         /// 检查手术条件，返回 (是否满足, 失败原因)。
         /// </summary>
-        public static (bool can, string reason) CheckSurgeryConditions(Pawn pawn, RecipeDef recipe, Map map)
+        public static (bool can, string reason) CheckSurgeryConditions(Pawn pawn, RecipeDef recipe, Map map,
+            HashSet<Thing> reservedThings = null)
         {
             if (pawn == null || recipe == null || map == null)
                 return (false, "无效参数");
@@ -44,7 +45,7 @@ namespace ColonistModification
             if (!HasRequiredMedicine(recipe, map, pawn))
                 return (false, "缺少所需药品");
 
-            if (!HasRequiredMaterials(recipe, map))
+            if (!HasRequiredMaterials(recipe, map, reservedThings))
                 return (false, "缺少手术所需材料");
 
             return (true, null);
@@ -106,7 +107,7 @@ namespace ColonistModification
             return null;
         }
 
-        public static bool HasRequiredMaterials(RecipeDef recipe, Map map)
+        public static bool HasRequiredMaterials(RecipeDef recipe, Map map, HashSet<Thing> reservedThings = null)
         {
             if (recipe.ingredients == null || recipe.ingredients.Count == 0) return true;
             foreach (var ingredient in recipe.ingredients)
@@ -116,18 +117,20 @@ namespace ColonistModification
                     ingredient.filter.Allows(ThingDefOf.MedicineUltratech))
                     continue;
 
-                if (!HasEnoughIngredient(ingredient, map))
+                if (!HasEnoughIngredient(ingredient, map, reservedThings))
                     return false;
             }
             return true;
         }
 
-        private static bool HasEnoughIngredient(IngredientCount ingredient, Map map)
+        private static bool HasEnoughIngredient(IngredientCount ingredient, Map map,
+            HashSet<Thing> reservedThings = null)
         {
             float required = ingredient.GetBaseCount();
             float found = 0f;
             foreach (Thing thing in map.listerThings.AllThings)
             {
+                if (reservedThings != null && reservedThings.Contains(thing)) continue;
                 if (ingredient.filter.Allows(thing) && !thing.IsForbidden(Faction.OfPlayer))
                 {
                     found += thing.stackCount;
