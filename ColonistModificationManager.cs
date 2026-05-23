@@ -204,7 +204,7 @@ namespace ColonistModification
 
                     var allItems = GetAllRecipeItems(pawn, template);
                     int total = allItems.Count;
-                    int done = allItems.Count(item => IsRecipePartCompleted(pawn, item.recipe, item.part));
+                    int done = allItems.Count(item => IsRecipePartCompleted(pawn, item.recipe, item.part, template.xenogermTargetXenotypeDefName));
                     if (done >= total)
                     {
                         record.status = ModificationStatus.Completed;
@@ -287,14 +287,14 @@ namespace ColonistModification
                     {
                         foreach (var part in parts)
                         {
-                            if (IsRecipePartCompleted(pawn, recipe, part)) continue;
+                            if (IsRecipePartCompleted(pawn, recipe, part, template.xenogermTargetXenotypeDefName)) continue;
                             result.Add(new PendingRecipeItem { recipe = recipe, part = part });
                         }
                     }
                 }
                 else
                 {
-                    if (IsRecipePartCompleted(pawn, recipe, null)) continue;
+                    if (IsRecipePartCompleted(pawn, recipe, null, template.xenogermTargetXenotypeDefName)) continue;
                     result.Add(new PendingRecipeItem { recipe = recipe, part = null });
                 }
             }
@@ -331,7 +331,7 @@ namespace ColonistModification
 
         public void AddSurgeryForRecipe(Pawn pawn, UserTemplate template, RecipeDef recipe, BodyPartRecord part = null)
         {
-            if (IsRecipePartCompleted(pawn, recipe, part)) return;
+            if (IsRecipePartCompleted(pawn, recipe, part, template.xenogermTargetXenotypeDefName)) return;
             CreateAndAddBill(pawn, template, new PendingRecipeItem { recipe = recipe, part = part });
             RefreshAllCaches();
         }
@@ -342,6 +342,11 @@ namespace ColonistModification
             var bill = new Bill_Medical(item.recipe, null);
             pawn.BillStack.AddBill(bill);
             if (item.part != null) bill.Part = item.part;
+            if (item.recipe.defName == "ImplantXenogerm" && ModsConfig.BiotechActive)
+            {
+                var xenogerm = FindXenogerm(pawn.Map, template.xenogermTargetXenotypeDefName);
+                if (xenogerm != null) bill.xenogerm = xenogerm;
+            }
 
             AddLog(new SurgeryLogEntry
             {
@@ -448,8 +453,32 @@ namespace ColonistModification
             return result;
         }
 
-        public bool IsRecipePartCompleted(Pawn pawn, RecipeDef recipe, BodyPartRecord part)
+        private Xenogerm FindXenogerm(Map map, string targetXenotypeDefName)
         {
+            if (map == null) return null;
+            XenotypeDef targetXeno = null;
+            if (!string.IsNullOrEmpty(targetXenotypeDefName))
+                targetXeno = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenotypeDefName);
+            foreach (Thing thing in map.listerThings.ThingsOfDef(ThingDefOf.Xenogerm))
+            {
+                Xenogerm xenogerm = thing as Xenogerm;
+                if (xenogerm == null || xenogerm.IsForbidden(Faction.OfPlayer) || xenogerm.Position.Fogged(map))
+                    continue;
+                if (targetXeno != null && xenogerm.xenotypeName != targetXeno.label)
+                    continue;
+                return xenogerm;
+            }
+            return null;
+        }
+
+        public bool IsRecipePartCompleted(Pawn pawn, RecipeDef recipe, BodyPartRecord part, string xenogermTargetDefName = null)
+        {
+            // 基因植入：检查 colonist 是否已有目标异种
+            if (recipe.defName == "ImplantXenogerm")
+                return !string.IsNullOrEmpty(xenogermTargetDefName)
+                    && pawn.genes?.Xenotype != null
+                    && pawn.genes.Xenotype.defName == xenogermTargetDefName;
+
             if (recipe.addsHediff == null) return false;
             if (part != null)
                 return pawn.health.hediffSet.hediffs.Any(h =>

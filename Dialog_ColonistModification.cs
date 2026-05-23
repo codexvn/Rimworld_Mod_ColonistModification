@@ -198,7 +198,7 @@ namespace ColonistModification
                     {
                         var allItems = Manager.GetAllRecipeItems(pawn, assigned);
                         total = allItems.Count;
-                        completed = allItems.Count(item => Manager.IsRecipePartCompleted(pawn, item.recipe, item.part));
+                        completed = allItems.Count(item => Manager.IsRecipePartCompleted(pawn, item.recipe, item.part, assigned.xenogermTargetXenotypeDefName));
                         statusLine = $"{GetStatusLabel(record, completed >= total)}  已完成{completed} 未完成{total - completed} (共{total}台手术)";
 
                         if (!string.IsNullOrEmpty(record.conditionFailReason))
@@ -353,7 +353,7 @@ namespace ColonistModification
                 var allItems = Manager.GetAllRecipeItems(pawn, template);
                 foreach (var item in allItems)
                 {
-                    bool done = Manager.IsRecipePartCompleted(pawn, item.recipe, item.part);
+                    bool done = Manager.IsRecipePartCompleted(pawn, item.recipe, item.part, template.xenogermTargetXenotypeDefName);
                     if (done)
                     {
                         GUI.color = new Color(0.3f, 0.8f, 0.3f);
