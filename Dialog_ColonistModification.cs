@@ -710,7 +710,7 @@ namespace ColonistModification
                     var items = Manager.GetPendingRecipeItems(pawn, tpl);
                     foreach (var item in items)
                     {
-                        if (ColonistModificationUtility.CheckSurgeryConditions(pawn, item.recipe, pawn.Map, tpl.minMedicineCategory).can)
+                        if (ColonistModificationUtility.CheckSurgeryConditions(pawn, item.recipe, pawn.Map, tpl.minMedicineCategory, tpl.xenogermTargetXenotypeDefName).can)
                         {
                             Manager.AddSurgeryForRecipe(pawn, tpl, item.recipe, item.part);
                             count++;

@@ -162,19 +162,42 @@ namespace ColonistModification
 
             // 基于缓存处理动作
             var templates = AllTemplates.ToList();
-            var allRecipeDefs = new HashSet<RecipeDef>(templates.SelectMany(t => t.resolvedRecipes));
             int activeSurgeries = 0;
 
-            // 统计当前已有手术单
+            // 统计当前已有手术单（仅限分配了模版的殖民者）
             foreach (Map map in Find.Maps)
             {
                 if (!map.IsPlayerHome) continue;
                 foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
                 {
+                    var assignedTpl = GetAssignedTemplateId(pawn.thingIDNumber) != null
+                        ? templates.FirstOrDefault(t => t.id == GetAssignedTemplateId(pawn.thingIDNumber))
+                        : null;
+                    if (assignedTpl == null) continue;
+                    var recipeDefs = new HashSet<RecipeDef>(assignedTpl.resolvedRecipes);
+                    if (!string.IsNullOrEmpty(assignedTpl.xenogermTargetXenotypeDefName) && ModsConfig.BiotechActive)
+                    {
+                        var xenoRecipe = DefDatabase<RecipeDef>.GetNamedSilentFail("ImplantXenogerm");
+                        if (xenoRecipe != null) recipeDefs.Add(xenoRecipe);
+                    }
+                    XenotypeDef targetXenoDef = null;
+                    string targetXenoName = assignedTpl.xenogermTargetXenotypeDefName;
+                    if (!string.IsNullOrEmpty(targetXenoName))
+                        targetXenoDef = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenoName);
                     for (int i = 0; i < pawn.BillStack.Count; i++)
                     {
-                        if (pawn.BillStack[i] is Bill_Medical bm && allRecipeDefs.Contains(bm.recipe))
-                            activeSurgeries++;
+                        if (pawn.BillStack[i] is Bill_Medical bm && recipeDefs.Contains(bm.recipe))
+                        {
+                            if (bm.recipe.defName == "ImplantXenogerm" && targetXenoDef != null)
+                            {
+                                if (bm.xenogerm != null && bm.xenogerm.xenotypeName == targetXenoDef.label)
+                                    activeSurgeries++;
+                            }
+                            else
+                            {
+                                activeSurgeries++;
+                            }
+                        }
                     }
                 }
             }
@@ -561,7 +584,7 @@ namespace ColonistModification
                         if (HasModificationBillForRecipe(pawn, item.recipe, item.part))
                             continue;
                         var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(
-                            pawn, item.recipe, pawn.Map, template.minMedicineCategory);
+                            pawn, item.recipe, pawn.Map, template.minMedicineCategory, template.xenogermTargetXenotypeDefName);
                         record.recipeStatus[item.Key] = can ? null : (reason ?? "条件不满足");
                         if (!can && !string.IsNullOrEmpty(reason))
                             record.conditionFailReason += $"· {item.Label}: {reason}\n";

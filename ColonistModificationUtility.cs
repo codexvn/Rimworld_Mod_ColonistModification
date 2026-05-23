@@ -8,7 +8,7 @@ namespace ColonistModification
     public static class ColonistModificationUtility
     {
         public static (bool can, string reason) CheckSurgeryConditions(Pawn pawn, RecipeDef recipe, Map map,
-            MedicineCategory minMedicineCategory = MedicineCategory.None)
+            MedicineCategory minMedicineCategory = MedicineCategory.None, string xenogermTargetDefName = null)
         {
             if (pawn == null || recipe == null || map == null)
                 return (false, "无效参数");
@@ -26,7 +26,7 @@ namespace ColonistModification
                     return (false, $"无可用身体部位 (手术部位: {GetRecipeBodyPartLabel(recipe)})");
             }
 
-            if (recipe.defName == "ImplantXenogerm" && !HasXenogermAvailable(map))
+            if (recipe.defName == "ImplantXenogerm" && !HasXenogermAvailable(map, xenogermTargetDefName))
                 return (false, "缺少材料: 异种胚芽");
 
             if (!recipe.Worker.AvailableOnNow(pawn, null))
@@ -45,11 +45,19 @@ namespace ColonistModification
             return (true, null);
         }
 
-        private static bool HasXenogermAvailable(Map map)
+        private static bool HasXenogermAvailable(Map map, string targetXenotypeDefName)
         {
+            XenotypeDef targetXeno = null;
+            if (!string.IsNullOrEmpty(targetXenotypeDefName))
+                targetXeno = DefDatabase<XenotypeDef>.GetNamedSilentFail(targetXenotypeDefName);
             foreach (Thing thing in map.listerThings.ThingsOfDef(ThingDefOf.Xenogerm))
-                if (!thing.IsForbidden(Faction.OfPlayer) && !thing.Position.Fogged(map))
-                    return true;
+            {
+                if (thing.IsForbidden(Faction.OfPlayer) || thing.Position.Fogged(map)) continue;
+                Xenogerm xenogerm = thing as Xenogerm;
+                if (xenogerm == null) continue;
+                if (targetXeno != null && xenogerm.xenotypeName != targetXeno.label) continue;
+                return true;
+            }
             return false;
         }
 
@@ -216,12 +224,5 @@ namespace ColonistModification
             return result;
         }
 
-        public static List<RecipeDef> GetXenogermRecipes()
-        {
-            var result = new List<RecipeDef>();
-            var implant = DefDatabase<RecipeDef>.GetNamedSilentFail("ImplantXenogerm");
-            if (implant != null) result.Add(implant);
-            return result;
-        }
     }
 }
