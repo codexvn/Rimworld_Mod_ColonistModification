@@ -658,8 +658,6 @@ namespace ColonistModification
             if (disabledTemplates == null) disabledTemplates = new HashSet<string>();
             Scribe_Collections.Look(ref globallyIgnoredPawns, "globallyIgnoredPawns", LookMode.Value);
             if (globallyIgnoredPawns == null) globallyIgnoredPawns = new HashSet<int>();
-            Scribe_Collections.Look(ref surgeryLog, "surgeryLog", LookMode.Deep);
-            if (surgeryLog == null) surgeryLog = new List<SurgeryLogEntry>();
         }
     }
 }
