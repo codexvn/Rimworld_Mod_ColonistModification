@@ -19,9 +19,12 @@ namespace ColonistModification
             if (recipe.Worker == null)
                 return (false, "手术定义无效");
 
-            var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
-            if (parts == null || !parts.Any())
-                return (false, $"无可用身体部位 (手术部位: {GetRecipeBodyPartLabel(recipe)})");
+            if (recipe.targetsBodyPart)
+            {
+                var parts = recipe.Worker.GetPartsToApplyOn(pawn, recipe);
+                if (parts == null || !parts.Any())
+                    return (false, $"无可用身体部位 (手术部位: {GetRecipeBodyPartLabel(recipe)})");
+            }
 
             if (!recipe.Worker.AvailableOnNow(pawn, null))
                 return (false, "手术当前不可用");

@@ -58,8 +58,8 @@ PawnModificationRecord
 ├── recipeStatus: Dictionary<string, string> — 手术检测结果缓存（运行时）
 │     key: "InstallBionicArm|左臂" 或 "ImplantXenogerm"
 │     value: null = 条件通过
-│            "__HAS_BILL__" = 已有手术单
 │            其他字符串 = 失败原因
+│     （已有手术单通过 HasModificationBillForRecipe 实时查 BillStack）
 └── ExposeData() — 序列化 templateId、status、delayedUntilTick
 ```
 
@@ -162,9 +162,9 @@ CreateAndAddBill(pawn, template, item)
 
 | 值 | 含义 | UI 显示 |
 |----|------|---------|
-| `null` | 条件通过，可添加 | 绿色"条件满足" + `[添加]` 按钮 |
-| `"__HAS_BILL__"` | BillStack 上已有对应手术单 | 蓝色"已添加手术单" |
-| 其他字符串 | 条件不满足 | 灰色 + 具体原因（如"缺少材料: 仿生臂 x1 (库存 0)"） |
+| `null` | 条件通过 | 绿色"条件满足" + `[添加]` 按钮 |
+| 其他字符串 | 条件不满足 | 灰色 + 具体原因 |
+| BillStack 已有单 | 实时查 HasModificationBillForRecipe | 蓝色"已添加手术单" |
 
 此约定在 `RefreshAllCaches` 中写入，UI 的 `DrawPendingList` 和 tick 的 `CheckAllTemplates` 都从缓存读取，不再调 `CheckSurgeryConditions`。
 

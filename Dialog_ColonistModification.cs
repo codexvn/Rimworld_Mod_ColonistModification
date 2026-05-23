@@ -277,8 +277,7 @@ namespace ColonistModification
                         && record.recipeStatus.TryGetValue(item.Key, out failReason);
                     bool can = hasCache && failReason == null;
 
-                    bool isHasBill = hasCache && failReason == "__HAS_BILL__";
-                    if (isHasBill)
+                    if (Manager.HasModificationBillForRecipe(pawn, item.recipe, item.part))
                     {
                         GUI.color = new Color(0.4f, 0.6f, 1f);
                         Widgets.Label(new Rect(18f, y + 1f, w - 18f, 20f), $"◯ {item.Label} — 已添加手术单");

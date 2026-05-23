@@ -165,6 +165,10 @@ namespace ColonistModification
             var allRecipeDefs = new HashSet<RecipeDef>(templates.SelectMany(t => t.resolvedRecipes));
             int activeSurgeries = 0;
 
+            // 全局是否已有等待确认的弹窗
+            bool hasPendingConfirmation = pawnRecords.Values
+                .Any(list => list.Any(r => r.status == ModificationStatus.PendingConfirmation));
+
             // 统计当前已有手术单
             foreach (Map map in Find.Maps)
             {
@@ -228,6 +232,8 @@ namespace ColonistModification
 
                     foreach (var item in pendingRecipes)
                     {
+                        if (HasModificationBillForRecipe(pawn, item.recipe, item.part)) continue;
+
                         record.recipeStatus.TryGetValue(item.Key, out string status);
                         bool can = status == null;
 
@@ -235,6 +241,7 @@ namespace ColonistModification
 
                         if (template.requirePlayerConfirmation)
                         {
+                            if (hasPendingConfirmation) continue;
                             if (activeSurgeries >= MaxConcurrentSurgeries) return;
                             record.status = ModificationStatus.PendingConfirmation;
                             var capturedPawn = pawn;
@@ -278,7 +285,14 @@ namespace ColonistModification
         private List<PendingRecipeItem> GetPendingRecipes(Pawn pawn, UserTemplate template, PawnModificationRecord record)
         {
             var result = new List<PendingRecipeItem>();
-            foreach (var recipe in template.resolvedRecipes)
+            var recipes = new List<RecipeDef>(template.resolvedRecipes);
+            // 基因植入
+            if (!string.IsNullOrEmpty(template.xenogermTargetXenotypeDefName) && ModsConfig.BiotechActive)
+            {
+                var xenoRecipe = DefDatabase<RecipeDef>.GetNamedSilentFail("ImplantXenogerm");
+                if (xenoRecipe != null) recipes.Add(xenoRecipe);
+            }
+            foreach (var recipe in recipes)
             {
                 if (recipe.targetsBodyPart)
                 {
@@ -421,7 +435,13 @@ namespace ColonistModification
         {
             var body = pawn.RaceProps.body;
             var result = new List<PendingRecipeItem>();
-            foreach (var recipe in template.resolvedRecipes)
+            var recipes = new List<RecipeDef>(template.resolvedRecipes);
+            if (!string.IsNullOrEmpty(template.xenogermTargetXenotypeDefName) && ModsConfig.BiotechActive)
+            {
+                var xenoRecipe = DefDatabase<RecipeDef>.GetNamedSilentFail("ImplantXenogerm");
+                if (xenoRecipe != null) recipes.Add(xenoRecipe);
+            }
+            foreach (var recipe in recipes)
             {
                 if (recipe.targetsBodyPart)
                 {
@@ -502,7 +522,7 @@ namespace ColonistModification
         public void EnableTemplate(string id) => disabledTemplates.Remove(id);
         /// <summary>
         /// 统一入口：遍历所有殖民者的未完成 recipe，检测条件并写入 recipeStatus 缓存。
-        /// 缓存值约定：null=条件通过，__HAS_BILL__=已有手术单，其他字符串=失败原因。
+        /// 缓存值约定：null=条件通过，其他字符串=失败原因。已有手术单通过 HasModificationBillForRecipe 实时判断。
         /// </summary>
         private void RefreshAllCaches()
         {
@@ -544,10 +564,7 @@ namespace ColonistModification
                     {
                         recipesChecked++;
                         if (HasModificationBillForRecipe(pawn, item.recipe, item.part))
-                        {
-                            record.recipeStatus[item.Key] = "__HAS_BILL__";
                             continue;
-                        }
                         var (can, reason) = ColonistModificationUtility.CheckSurgeryConditions(
                             pawn, item.recipe, pawn.Map, template.minMedicineCategory);
                         record.recipeStatus[item.Key] = can ? null : (reason ?? "条件不满足");
