@@ -2,7 +2,7 @@
 <ModMetaData>
   <name>殖民者制式改造</name>
   <author>YourName</author>
-  <packageId>ColonistModification</packageId>
+  <packageId>codexvn.ColonistModification.main</packageId>
   <description>
     为游戏后期提供殖民者制式改造管理功能。
 
@@ -20,7 +20,7 @@
     - 系统会自动检测条件并在就绪时通知你
   </description>
   <supportedVersions>
-    <li>1.5</li>
+    <li>1.6</li>
   </supportedVersions>
   <modDependencies>
     <li>
