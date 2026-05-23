@@ -30,6 +30,9 @@ namespace ColonistModification
         /// <summary>基因植入目标异种defName，null=不启用基因植入</summary>
         public string xenogermTargetXenotypeDefName;
 
+        /// <summary>目标身体模板defName，用于筛选可用植入物部位。null=Human</summary>
+        public string targetBodyDefName;
+
         public bool colonistsOnly = true;
         public bool includeSlaves = false;
         public bool requirePlayerConfirmation = true;
@@ -69,11 +72,15 @@ namespace ColonistModification
             Scribe_Values.Look(ref maxRetriesPerStep, "maxRetriesPerStep", 3);
             Scribe_Values.Look(ref minColonyWealth, "minColonyWealth", 0f);
             Scribe_Values.Look(ref xenogermTargetXenotypeDefName, "xenogermTargetXenotypeDefName");
+            Scribe_Values.Look(ref targetBodyDefName, "targetBodyDefName");
             Scribe_Values.Look(ref colonistsOnly, "colonistsOnly", true);
             Scribe_Values.Look(ref includeSlaves, "includeSlaves", false);
             Scribe_Values.Look(ref requirePlayerConfirmation, "requirePlayerConfirmation", true);
             Scribe_Values.Look(ref delayDays, "delayDays", 3);
             Scribe_Values.Look(ref minMedicineCategory, "minMedicineCategory", MedicineCategory.Industrial);
+
+            // 反序列化后确保集合字段不为null（Scribe绕过字段初始化器）
+            if (recipeDefNames == null) recipeDefNames = new List<string>();
         }
     }
 

@@ -235,10 +235,10 @@ namespace ColonistModification
         /// 通过 RecipeWorker 类型筛选（而非 defName 前缀），mod 添加的植入物自动出现。
         /// 返回：部位组标签 -> 该组下的配方列表。
         /// </summary>
-        public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup()
+        public static Dictionary<string, List<RecipeDef>> GetImplantRecipesByGroup(BodyDef bodyDef = null)
         {
             var result = new Dictionary<string, List<RecipeDef>>();
-            var humanBody = BodyDefOf.Human;
+            var body = bodyDef ?? BodyDefOf.Human;
             // 缓存：BodyPartGroupDef -> 该组下所有 BodyPartRecord 的标签
             var groupToPartLabels = new Dictionary<BodyPartGroupDef, HashSet<string>>();
 
@@ -257,7 +257,7 @@ namespace ColonistModification
                     if (!groupToPartLabels.TryGetValue(g, out var labels))
                     {
                         labels = new HashSet<string>();
-                        foreach (var part in humanBody.AllParts)
+                        foreach (var part in body.AllParts)
                         {
                             if (part.groups != null && part.groups.Contains(g))
                                 labels.Add(part.LabelCap);
@@ -273,7 +273,7 @@ namespace ColonistModification
                     foreach (var p in recipe.appliedOnFixedBodyParts)
                     {
                         // 查看该部位在人体中的实际标签
-                        var parts = humanBody.GetPartsWithDef(p);
+                        var parts = body.GetPartsWithDef(p);
                         if (parts.Count > 0)
                         {
                             foreach (var part in parts)

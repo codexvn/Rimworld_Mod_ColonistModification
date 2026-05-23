@@ -19,8 +19,14 @@ namespace ColonistModification
         private int editorSubTab = 0;
 
         private ColonistModificationManager Manager => ColonistModificationManager.Instance;
-        private List<UserTemplate> AllTemplates =>
-            ColonistModificationMod.Instance?.settings?.templates ?? new List<UserTemplate>();
+        private List<UserTemplate> AllTemplates
+        {
+            get
+            {
+                var s = ColonistModificationMod.Instance?.settings;
+                return s?.templates ?? new List<UserTemplate>();
+            }
+        }
 
         public Dialog_ColonistModification()
         {
@@ -153,10 +159,11 @@ namespace ColonistModification
                     }
 
                     // Status & reasons
-                    if (record != null)
+                    if (record != null && assigned != null)
                     {
                         string statusText = GetStatusLabel(record);
-                        string fullText = $"{statusText} ({record.completedRecipeDefNames.Count}/{assigned.StepCount})";
+                        int completed = record.completedRecipeDefNames?.Count ?? 0;
+                        string fullText = $"{statusText} ({completed}/{assigned.StepCount})";
 
                         if (record.status == ModificationStatus.Idle && !string.IsNullOrEmpty(record.conditionFailReason))
                             fullText += $"\n{record.conditionFailReason.TrimEnd()}";
@@ -319,6 +326,30 @@ namespace ColonistModification
             }
             ry += 34f;
 
+            // 种族筛选：只列出可手术的人类like种族（有身体部位才可手术）
+            // 只列出手术菜单中有"添加清单"按钮的种族（recipeUsers中包含该种族的才算可手术）
+            var bodyDefs = DefDatabase<ThingDef>.AllDefs
+                .Where(t => t.race != null && t.race.Humanlike && t.race.body != null
+                    && t.AllRecipes.Any(r => r.IsSurgery))
+                .Select(t => t.race.body).Distinct().ToList();
+            BodyDef selBody = bodyDefs.FirstOrDefault(b => b.defName == (editTemplate.targetBodyDefName ?? "Human")) ?? BodyDefOf.Human;
+            Widgets.Label(new Rect(rightX, ry, 80f, 26f), "种族筛选:");
+            if (Widgets.ButtonText(new Rect(rightX + 85f, ry, 150f, 26f), selBody.LabelCap))
+            {
+                var opts = new List<FloatMenuOption>();
+                foreach (var b in bodyDefs)
+                {
+                    var c = b;
+                    opts.Add(new FloatMenuOption(c.LabelCap, () =>
+                    {
+                        editTemplate.targetBodyDefName = c.defName == "Human" ? null : c.defName;
+                        ColonistModificationMod.Instance.WriteSettings();
+                    }));
+                }
+                Find.WindowStack.Add(new FloatMenu(opts));
+            }
+            ry += 30f;
+
             // === 子标签：植入物 / 基因植入 ===
             string[] subTabs = { "植入物", "基因植入" };
             float subTabW = 90f;
@@ -333,7 +364,7 @@ namespace ColonistModification
 
             if (editorSubTab == 0) // 植入物
             {
-                var grouped = ColonistModificationUtility.GetImplantRecipesByGroup();
+                var grouped = ColonistModificationUtility.GetImplantRecipesByGroup(selBody);
                 foreach (var kvp in grouped)
                 {
                     Widgets.Label(new Rect(rightX, ry, rw, 24f), $"◼ {kvp.Key}");

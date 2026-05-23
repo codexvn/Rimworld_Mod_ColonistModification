@@ -27,27 +27,6 @@ namespace ColonistModification
                 autoRetryOnFailure = true,
                 maxRetriesPerStep = 3,
             });
-
-            templates.Add(new UserTemplate
-            {
-                id = System.Guid.NewGuid().ToString(),
-                name = "高级仿生改造",
-                recipeDefNames = new List<string> { "InstallBionicSpine", "InstallBionicHeart", "InstallBionicStomach", "InstallBionicArm", "InstallBionicLeg" },
-                minColonyWealth = 50000f,
-                autoRetryOnFailure = true,
-                maxRetriesPerStep = 5,
-            });
-
-            templates.Add(new UserTemplate
-            {
-                id = System.Guid.NewGuid().ToString(),
-                name = "统一异种基因植入",
-                recipeDefNames = new List<string> { "ImplantXenogerm" },
-                minColonyWealth = 10000f,
-                autoRetryOnFailure = true,
-                maxRetriesPerStep = 3,
-                includeSlaves = true,
-            });
         }
 
         /// <summary>
@@ -63,6 +42,7 @@ namespace ColonistModification
         {
             base.ExposeData();
             Scribe_Collections.Look(ref templates, "templates", LookMode.Deep);
+            if (templates == null) templates = new List<UserTemplate>();
         }
     }
 }

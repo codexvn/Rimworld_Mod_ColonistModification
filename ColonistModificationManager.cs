@@ -23,6 +23,7 @@ namespace ColonistModification
             Scribe_Values.Look(ref templateId, "templateId");
             Scribe_Values.Look(ref status, "status");
             Scribe_Collections.Look(ref completedRecipeDefNames, "completedRecipeDefNames", LookMode.Value);
+            if (completedRecipeDefNames == null) completedRecipeDefNames = new HashSet<string>();
             Scribe_Values.Look(ref delayedUntilTick, "delayedUntilTick", 0);
             Scribe_Values.Look(ref failedStepIndex, "failedStepIndex", -1);
             Scribe_Values.Look(ref currentRetryCount, "currentRetryCount", 0);
@@ -127,6 +128,13 @@ namespace ColonistModification
                     var template = GetAssignedTemplate(pawn);
                     if (template == null) continue;
                     if (disabledTemplates.Contains(template.id)) continue;
+
+                    // 种族筛选：身体模板不匹配则跳过
+                    if (!string.IsNullOrEmpty(template.targetBodyDefName))
+                    {
+                        if (pawn.RaceProps.body.defName != template.targetBodyDefName)
+                            continue;
+                    }
                     if (template.minColonyWealth > 0 && colonyWealth < template.minColonyWealth) continue;
                     if (template.StepCount == 0) continue;
 
