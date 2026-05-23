@@ -192,13 +192,14 @@ namespace ColonistModification
                     Rect statusRect = new Rect(nameW + templateW + gap * 2, y + 2f,
                         w - nameW - templateW - gap * 2, 20f);
 
+                    int total = 0;
+                    int completed = 0;
                     if (record != null && assigned != null)
                     {
                         var allItems = Manager.GetAllRecipeItems(pawn, assigned);
-                        int total = allItems.Count;
-                        int completed = allItems.Count(item => Manager.IsRecipePartCompleted(pawn, item.recipe, item.part));
-                        int remaining = total - completed;
-                        statusLine = $"{GetStatusLabel(record)}  已完成{completed} 未完成{remaining} (共{total}台手术)";
+                        total = allItems.Count;
+                        completed = allItems.Count(item => Manager.IsRecipePartCompleted(pawn, item.recipe, item.part));
+                        statusLine = $"{GetStatusLabel(record, completed >= total)}  已完成{completed} 未完成{total - completed} (共{total}台手术)";
 
                         if (!string.IsNullOrEmpty(record.conditionFailReason))
                             tooltip = record.conditionFailReason.TrimEnd();
@@ -208,7 +209,7 @@ namespace ColonistModification
                         statusLine = "未分配";
                     }
 
-                    GUI.color = record != null ? GetStatusColor(record) : Color.gray;
+                    GUI.color = record != null ? GetStatusColor(record, completed >= total) : Color.gray;
                     Widgets.Label(statusRect, statusLine);
                     GUI.color = Color.white;
 
@@ -723,27 +724,27 @@ namespace ColonistModification
                 Messages.Message($"已为 {count} 位殖民者添加手术。", MessageTypeDefOf.NeutralEvent, false);
         }
 
-        private string GetStatusLabel(PawnModificationRecord record)
+        private string GetStatusLabel(PawnModificationRecord record, bool allComplete)
         {
             if (record == null) return "未分配";
+            if (allComplete) return "✓ 已完成";
             switch (record.status)
             {
-                case ModificationStatus.Idle: return "⏳ 条件不满足";
+                case ModificationStatus.Idle: return "⏳ 等待资源";
                 case ModificationStatus.PendingConfirmation: return "⚡ 等待确认";
-                case ModificationStatus.Completed: return "✓ 已完成";
                 case ModificationStatus.Dismissed: return "✗ 已忽略";
                 case ModificationStatus.Delayed: return "⏱ 已延迟";
                 default: return "?";
             }
         }
 
-        private Color GetStatusColor(PawnModificationRecord record)
+        private Color GetStatusColor(PawnModificationRecord record, bool allComplete = false)
         {
             if (record == null) return Color.gray;
+            if (allComplete) return new Color(0.3f, 0.8f, 0.3f);
             switch (record.status)
             {
                 case ModificationStatus.PendingConfirmation: return new Color(1f, 0.84f, 0f);
-                case ModificationStatus.Completed: return new Color(0.3f, 0.8f, 0.3f);
                 case ModificationStatus.Dismissed: return Color.gray;
                 case ModificationStatus.Delayed: return new Color(0.5f, 0.5f, 1f);
                 default: return Color.white;
