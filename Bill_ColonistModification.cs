@@ -15,10 +15,11 @@ namespace ColonistModification
     /// </summary>
     public class Bill_ColonistModification : Bill_Medical
     {
-        /// <summary>
-        /// 所属的改造模板
-        /// </summary>
-        public ColonistModificationTemplateDef template;
+        /// <summary>所属模板的唯一ID</summary>
+        public string templateId;
+
+        /// <summary>运行时解析的模板引用（不序列化）</summary>
+        public UserTemplate template;
 
         /// <summary>
         /// 当前步骤在模板中的索引
@@ -60,7 +61,8 @@ namespace ColonistModification
             RecipeDef currentRecipe = this.recipe;
             BodyPartRecord operatedPart = this.Part;
             BillStack stack = this.billStack;
-            ColonistModificationTemplateDef currentTemplate = this.template;
+            UserTemplate currentTemplate = this.template ?? ColonistModificationManager.Instance?.GetTemplateById(this.templateId);
+            string currentTemplateId = this.templateId;
             int stepIndex = this.currentStepIndex;
             int currentRetryCount = this.retryCount;
             HediffDef targetHediff = currentRecipe?.addsHediff;
@@ -94,20 +96,18 @@ namespace ColonistModification
             // ---- 根据结果处理后续流程 ----
             if (surgerySucceeded)
             {
-                // 手术成功 → 处理下一步骤
-                OnSurgerySucceeded(patient, currentTemplate, stepIndex, stack);
+                OnSurgerySucceeded(patient, currentTemplate, currentTemplateId, stepIndex, stack);
             }
             else
             {
-                // 手术失败 → 处理重试或跳过
-                OnSurgeryFailed(patient, currentTemplate, stepIndex, currentRetryCount, currentRecipe, operatedPart, stack, boundXenogerm);
+                OnSurgeryFailed(patient, currentTemplate, currentTemplateId, stepIndex, currentRetryCount, currentRecipe, operatedPart, stack, boundXenogerm);
             }
         }
 
         /// <summary>
         /// 手术成功后的处理：推进到模板下一步或标记完成
         /// </summary>
-        private void OnSurgerySucceeded(Pawn patient, ColonistModificationTemplateDef template, int stepIndex, BillStack stack)
+        private void OnSurgerySucceeded(Pawn patient, UserTemplate template, string templateId, int stepIndex, BillStack stack)
         {
             if (template == null)
                 return;
@@ -119,7 +119,7 @@ namespace ColonistModification
             {
                 // 所有步骤完成！
                 Messages.Message(
-                    $"殖民者 {patient.LabelShort} 已完成制式改造模板 '{template.label}' 的所有步骤！",
+                    $"殖民者 {patient.LabelShort} 已完成制式改造模板 '{template.name}' 的所有步骤！",
                     new LookTargets(patient), MessageTypeDefOf.PositiveEvent, false);
             }
             else
@@ -133,7 +133,7 @@ namespace ColonistModification
                     stack.AddBill(nextBill);
 
                     Messages.Message(
-                        $"殖民者 {patient.LabelShort} 的 '{template.label}' 模板：已完成步骤 {stepIndex + 1}/{template.StepCount}，准备执行下一步。",
+                        $"殖民者 {patient.LabelShort} 的 '{template.name}' 模板：已完成步骤 {stepIndex + 1}/{template.StepCount}，准备执行下一步。",
                         new LookTargets(patient), MessageTypeDefOf.NeutralEvent, false);
                 }
             }
@@ -145,7 +145,7 @@ namespace ColonistModification
         /// <summary>
         /// 手术失败后的处理：重试或跳过
         /// </summary>
-        private void OnSurgeryFailed(Pawn patient, ColonistModificationTemplateDef template, int stepIndex,
+        private void OnSurgeryFailed(Pawn patient, UserTemplate template, string templateId, int stepIndex,
             int currentRetryCount, RecipeDef recipe, BodyPartRecord part, BillStack stack, Xenogerm boundXenogerm)
         {
             if (template == null)
@@ -154,14 +154,14 @@ namespace ColonistModification
                 return;
             }
 
-            var manager = ColonistModificationManager.Instance;
-            int maxRetries = manager?.GetEffectiveMaxRetriesPerStep(template) ?? template.maxRetriesPerStep;
-            bool autoRetry = manager?.GetEffectiveAutoRetryOnFailure(template) ?? template.autoRetryOnFailure;
+            int maxRetries = template.maxRetriesPerStep;
+            bool autoRetry = template.autoRetryOnFailure;
 
             if (autoRetry && currentRetryCount < maxRetries)
             {
                 // 自动重试：重新添加手术Bill
                 Bill_ColonistModification retryBill = new Bill_ColonistModification(recipe);
+                retryBill.templateId = templateId;
                 retryBill.template = template;
                 retryBill.currentStepIndex = stepIndex;
                 retryBill.retryCount = currentRetryCount + 1;
@@ -222,6 +222,7 @@ namespace ColonistModification
         public override Bill Clone()
         {
             Bill_ColonistModification clone = (Bill_ColonistModification)base.Clone();
+            clone.templateId = this.templateId;
             clone.template = this.template;
             clone.currentStepIndex = this.currentStepIndex;
             clone.retryCount = this.retryCount;
@@ -234,9 +235,12 @@ namespace ColonistModification
         public override void ExposeData()
         {
             base.ExposeData();
-            Scribe_Defs.Look(ref template, "template");
+            Scribe_Values.Look(ref templateId, "templateId");
             Scribe_Values.Look(ref currentStepIndex, "currentStepIndex", 0);
             Scribe_Values.Look(ref retryCount, "retryCount", 0);
+            // 加载后重新解析模板引用
+            if (Scribe.mode == LoadSaveMode.LoadingVars && templateId != null)
+                template = ColonistModificationManager.Instance?.GetTemplateById(templateId);
         }
     }
 }

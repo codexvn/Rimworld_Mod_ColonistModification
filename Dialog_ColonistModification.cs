@@ -10,10 +10,18 @@ namespace ColonistModification
     public class Dialog_ColonistModification : Window
     {
         private int selectedTab = 0;
-        private readonly string[] tabNames = { "模板概览", "待处理列表", "已完成记录", "模板设置" };
+        private readonly string[] tabNames = { "模板概览", "待处理列表", "已完成记录", "模板编辑" };
         private Vector2 scrollPosition = Vector2.zero;
         private float cachedHeight = 0f;
+
+        // 模板编辑器状态
+        private string editingTemplateId;
+        private string newTemplateName = "";
+        private Vector2 editorScrollPos = Vector2.zero;
+
         private ColonistModificationManager Manager => ColonistModificationManager.Instance;
+        private List<UserTemplate> AllTemplates =>
+            ColonistModificationMod.Instance?.settings?.templates ?? new List<UserTemplate>();
 
         public Dialog_ColonistModification()
         {
@@ -76,7 +84,7 @@ namespace ColonistModification
                 case 3:
                     viewRect = new Rect(0f, 0f, contentRect.width - 20f, Mathf.Max(contentRect.height, cachedHeight));
                     Widgets.BeginScrollView(contentRect, ref scrollPosition, viewRect, true);
-                    DrawTemplateSettings(viewRect);
+                    DrawTemplateEditor(viewRect);
                     Widgets.EndScrollView();
                     break;
             }
@@ -90,10 +98,6 @@ namespace ColonistModification
                 this.Close(true);
         }
 
-        /// <summary>
-        /// 动态高度标签：用 Text.CalcHeight 计算文本实际所需高度，避免长文本被截断。
-        /// 返回实际使用的高度，调用方据此推进 y 坐标。
-        /// </summary>
         private static float LabelWithHeight(Rect rect, string text)
         {
             float height = Text.CalcHeight(text, rect.width);
@@ -111,10 +115,10 @@ namespace ColonistModification
                 return;
             }
 
-            var templates = Manager.GetAllTemplates().ToList();
-            if (!templates.Any())
+            var templates = AllTemplates;
+            if (templates.Count == 0)
             {
-                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "没有定义任何改造模板。请通过XML添加模板定义。");
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "没有定义任何改造模板。请在「模板编辑」中创建。");
                 return;
             }
 
@@ -125,8 +129,7 @@ namespace ColonistModification
             {
                 if (template.StepCount == 0) continue;
 
-                // Template header
-                string headerText = $"{template.label} ({template.StepCount} 个步骤, 优先级:{template.priority})";
+                string headerText = $"{template.name} ({template.StepCount} 个步骤)";
                 string stepsPreview = string.Join(" → ", template.resolvedRecipes.Select(r => r.label));
                 if (stepsPreview.Length > 60) stepsPreview = stepsPreview.Substring(0, 57) + "...";
 
@@ -140,7 +143,6 @@ namespace ColonistModification
                 Widgets.Label(new Rect(width * 0.42f, y + 4f, width * 0.45f, stepsH), stepsPreview);
                 y += cardH + 2f;
 
-                // Pawns
                 var matchingPawns = GetMatchingPawns(template);
                 if (matchingPawns.Count == 0)
                 {
@@ -168,17 +170,14 @@ namespace ColonistModification
                             Widgets.DrawBoxSolid(pawnRow, new Color(1f, 0.92f, 0.016f, 0.15f));
 
                         Widgets.Label(new Rect(24f, y + 2f, 150f, rowH), pawn.LabelShort);
-
                         GUI.color = statusColor;
                         Widgets.Label(new Rect(180f, y + 2f, 150f, rowH), statusLabel);
                         GUI.color = Color.white;
-
                         if (record != null)
                             Widgets.Label(new Rect(330f, y + 2f, 120f, rowH), progressLabel);
 
                         float buttonX = width - 320f;
                         DrawActionButtons(buttonX, y + 1f, pawn, template, record);
-
                         y += rowH + 2f;
                     }
                 }
@@ -209,15 +208,15 @@ namespace ColonistModification
             foreach (var (pawn, template) in pendingList)
             {
                 var record = Manager.GetRecord(pawn, template);
-
-                string label = $"殖民者: {pawn.LabelShort}  |  模板: {template.label}";
+                string label = $"殖民者: {pawn.LabelShort}  |  模板: {template.name}";
                 float labelH = Text.CalcHeight(label, rect.width * 0.5f);
+
                 int nextStep = record != null ? record.lastCompletedStepIndex + 1 : 0;
                 string nextText = "";
                 if (nextStep < template.StepCount)
                 {
-                    var nextRecipe = template.GetStep(nextStep);
-                    if (nextRecipe != null) nextText = $"下一步: {nextRecipe.label}";
+                    var nr = template.GetStep(nextStep);
+                    if (nr != null) nextText = $"下一步: {nr.label}";
                 }
                 float nextH = string.IsNullOrEmpty(nextText) ? 0f : Text.CalcHeight(nextText, rect.width * 0.48f);
                 float cardH = Mathf.Max(labelH, nextH) + 10f;
@@ -247,8 +246,7 @@ namespace ColonistModification
 
             float y = 0f;
             bool foundAny = false;
-
-            foreach (var template in Manager.GetAllTemplates())
+            foreach (var template in AllTemplates)
             {
                 foreach (var pawn in GetMatchingPawns(template))
                 {
@@ -256,7 +254,7 @@ namespace ColonistModification
                     if (record != null && record.status == ModificationStatus.Completed)
                     {
                         foundAny = true;
-                        string text = $"殖民者: {pawn.LabelShort}  |  模板: {template.label}  |  状态: ✓ 已完成";
+                        string text = $"殖民者: {pawn.LabelShort}  |  模板: {template.name}  |  状态: ✓ 已完成";
                         float h = LabelWithHeight(new Rect(0f, y, rect.width, 24f), text);
                         y += h + 2f;
                     }
@@ -265,153 +263,276 @@ namespace ColonistModification
 
             if (!foundAny)
                 LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "暂无已完成的改造记录。");
-
             cachedHeight = y + 40f;
         }
 
-        // ==================== Tab 3: 模板设置 ====================
+        // ==================== Tab 3: 模板编辑 ====================
 
-        private void DrawTemplateSettings(Rect rect)
+        private void DrawTemplateEditor(Rect rect)
         {
-            if (Manager == null)
+            var settings = ColonistModificationMod.Instance?.settings;
+            if (settings == null)
             {
-                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "改造管理器未初始化。");
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "Mod配置未初始化。");
                 return;
             }
 
-            var templates = Manager.GetAllTemplates().ToList();
-            if (!templates.Any())
-            {
-                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "没有定义任何改造模板。");
-                cachedHeight = 30f;
-                return;
-            }
-
+            var templates = settings.templates;
+            float leftWidth = 220f;
             float y = 0f;
-            float width = rect.width;
 
-            foreach (var template in templates)
+            // === 左侧：模板列表 ===
+            Widgets.Label(new Rect(0f, y, leftWidth, 24f), "模板列表:");
+            y += 26f;
+
+            foreach (var t in templates)
             {
-                if (template.StepCount == 0) continue;
-
-                // Header
-                string headerText = $"【{template.label}】({template.StepCount} 个步骤)";
-                Text.Font = GameFont.Medium;
-                float headerH = Text.CalcHeight(headerText, width);
-                Widgets.Label(new Rect(0f, y, width, headerH), headerText);
-                y += headerH + 4f;
-                Text.Font = GameFont.Small;
-
-                // Description
-                if (!string.IsNullOrEmpty(template.description))
+                bool selected = t.id == editingTemplateId;
+                if (selected) GUI.color = Color.cyan;
+                if (Widgets.ButtonText(new Rect(0f, y, leftWidth - 50f, 24f), t.name, true, false, true))
                 {
-                    float descH = Text.CalcHeight(template.description, width - 10f);
-                    GUI.color = Color.grey;
-                    Widgets.Label(new Rect(10f, y, width - 10f, descH), template.description);
-                    GUI.color = Color.white;
-                    y += descH + 4f;
+                    editingTemplateId = t.id;
+                    newTemplateName = t.name;
                 }
-
-                // Settings form
-                var settings = Manager.GetOrCreateRuntimeSettings(template.defName);
-                float listingWidth = width - 20f;
-                Listing_Standard listing = new Listing_Standard();
-                listing.Begin(new Rect(10f, y, listingWidth, 999f));
-
-                // autoRetryOnFailure
-                bool curAutoRetry = settings.GetAutoRetryOnFailure(template);
-                listing.CheckboxLabeled(
-                    $"失败自动重试 (XML默认: {(template.autoRetryOnFailure ? "是" : "否")})",
-                    ref curAutoRetry,
-                    "手术失败后是否自动重新安排手术");
-                settings.autoRetryOnFailure = (curAutoRetry == template.autoRetryOnFailure) ? (bool?)null : curAutoRetry;
-
-                // maxRetriesPerStep
-                int curMaxRetries = settings.GetMaxRetriesPerStep(template);
-                string maxRetBuf = curMaxRetries.ToString();
-                Rect maxRetRect = listing.GetRect(30f);
-                Widgets.Label(maxRetRect.LeftHalf(), $"每步最大重试次数 (XML默认: {template.maxRetriesPerStep})");
-                Widgets.TextFieldNumeric(new Rect(maxRetRect.x + maxRetRect.width / 2f, maxRetRect.y, 80f, 28f),
-                    ref curMaxRetries, ref maxRetBuf, 0f, 99f);
-                settings.maxRetriesPerStep = (curMaxRetries == template.maxRetriesPerStep) ? (int?)null : curMaxRetries;
-                listing.Gap(4f);
-
-                // minColonyWealth
-                float curWealth = settings.GetMinColonyWealth(template);
-                string wealthBuf = curWealth.ToString("F0");
-                Rect wealthRect = listing.GetRect(30f);
-                Widgets.Label(wealthRect.LeftHalf(), $"最低殖民地财富 (XML默认: {template.minColonyWealth:F0})");
-                Widgets.TextFieldNumeric(new Rect(wealthRect.x + wealthRect.width / 2f, wealthRect.y, 80f, 28f),
-                    ref curWealth, ref wealthBuf, 0f, 9999999f);
-                settings.minColonyWealth = Mathf.Approximately(curWealth, template.minColonyWealth) ? (float?)null : curWealth;
-                listing.Gap(4f);
-
-                // requirePlayerConfirmation
-                bool curConfirm = settings.GetRequirePlayerConfirmation(template);
-                listing.CheckboxLabeled(
-                    $"需要玩家确认 (XML默认: {(template.requirePlayerConfirmation ? "是" : "否")})",
-                    ref curConfirm,
-                    "开始改造前是否征求玩家确认");
-                settings.requirePlayerConfirmation = (curConfirm == template.requirePlayerConfirmation) ? (bool?)null : curConfirm;
-
-                // delayDays
-                int curDelay = settings.GetDelayDays(template);
-                string delayBuf = curDelay.ToString();
-                Rect delayRect = listing.GetRect(30f);
-                Widgets.Label(delayRect.LeftHalf(), $"延迟天数 (XML默认: {template.delayDays})");
-                Widgets.TextFieldNumeric(new Rect(delayRect.x + delayRect.width / 2f, delayRect.y, 80f, 28f),
-                    ref curDelay, ref delayBuf, 0f, 365f);
-                settings.delayDays = (curDelay == template.delayDays) ? (int?)null : curDelay;
-                listing.Gap(4f);
-
-                // minMedicineCategory - cycle button
-                string[] medNames = { "无要求", "草药", "工业药品", "闪耀世界药品" };
-                RimWorld.MedicineCategory[] medVals = { RimWorld.MedicineCategory.None, RimWorld.MedicineCategory.Herbal,
-                    RimWorld.MedicineCategory.Industrial, RimWorld.MedicineCategory.Glitter };
-                RimWorld.MedicineCategory curCat = settings.GetMinMedicineCategory(template);
-                int catIdx = Array.IndexOf(medVals, curCat);
-                if (catIdx < 0) catIdx = 0;
-
-                Rect medRect = listing.GetRect(30f);
-                int xmlCatIdx = Array.IndexOf(medVals, template.minMedicineCategory);
-                Widgets.Label(medRect.LeftHalf(),
-                    $"最低药品等级 (XML默认: {(xmlCatIdx >= 0 ? medNames[xmlCatIdx] : "?")})");
-                if (Widgets.ButtonText(new Rect(medRect.x + medRect.width / 2f, medRect.y, 100f, 28f), medNames[catIdx]))
-                {
-                    catIdx = (catIdx + 1) % medVals.Length;
-                    settings.minMedicineCategory = (medVals[catIdx] == template.minMedicineCategory)
-                        ? (RimWorld.MedicineCategory?)null : medVals[catIdx];
-                }
-                listing.Gap(4f);
-
-                listing.End();
-                y += listing.CurHeight + 10f;
-
-                // Reset button
-                if (Manager.HasRuntimeOverrides(template.defName))
-                {
-                    if (Widgets.ButtonText(new Rect(width - 160f, y, 150f, 28f), "恢复XML默认值"))
-                        Manager.ResetRuntimeSettings(template.defName);
-                    y += 32f;
-                }
-
-                // Separator
-                GUI.color = Color.grey;
-                Widgets.DrawLineHorizontal(0f, y, width);
                 GUI.color = Color.white;
-                y += 10f;
+
+                if (Widgets.ButtonText(new Rect(leftWidth - 46f, y, 46f, 24f), "✕"))
+                {
+                    templates.Remove(t);
+                    if (editingTemplateId == t.id) editingTemplateId = null;
+                    ColonistModificationMod.Instance.WriteSettings();
+                    break;
+                }
+                y += 26f;
             }
 
+            y += 4f;
+            if (Widgets.ButtonText(new Rect(0f, y, leftWidth, 26f), "+ 新建模板"))
+            {
+                var newTpl = new UserTemplate
+                {
+                    id = Guid.NewGuid().ToString(),
+                    name = "新模板"
+                };
+                templates.Add(newTpl);
+                editingTemplateId = newTpl.id;
+                newTemplateName = newTpl.name;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+
+            // === 右侧：编辑区域 ===
+            float rightX = leftWidth + 10f;
+            float rightWidth = rect.width - rightX;
+
+            var editingTemplate = templates.FirstOrDefault(t => t.id == editingTemplateId);
+            if (editingTemplate == null)
+            {
+                LabelWithHeight(new Rect(rightX, 0f, rightWidth, 30f), "← 选择或新建一个模板开始编辑");
+                cachedHeight = y + 40f;
+                return;
+            }
+
+            Rect editorRect = new Rect(rightX, 0f, rightWidth, rect.height + 200f);
+            Widgets.BeginScrollView(new Rect(rightX, 0f, rightWidth, rect.height), ref editorScrollPos,
+                new Rect(0f, 0f, rightWidth - 20f, 900f), true);
+            float ey = 0f;
+            float ew = rightWidth - 20f;
+
+            // 模板名称
+            Widgets.Label(new Rect(0f, ey, 60f, 28f), "名称:");
+            newTemplateName = Widgets.TextField(new Rect(65f, ey, ew - 70f, 28f), newTemplateName);
+            if (Widgets.ButtonText(new Rect(ew - 65f, ey, 60f, 28f), "保存"))
+            {
+                editingTemplate.name = newTemplateName;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+            ey += 34f;
+
+            // === 手术选择（分类复选框）===
+            Widgets.Label(new Rect(0f, ey, ew, 26f), "【手术步骤 - 植入物】");
+            ey += 28f;
+
+            var implantRecipes = ColonistModificationUtility.GetImplantRecipes();
+            var xenogermRecipes = ColonistModificationUtility.GetXenogermRecipes();
+
+            foreach (var recipe in implantRecipes)
+            {
+                bool has = editingTemplate.recipeDefNames.Contains(recipe.defName);
+                bool newVal = has;
+                Rect checkRect = new Rect(5f, ey, ew - 10f, 22f);
+                Widgets.CheckboxLabeled(checkRect, recipe.label, ref newVal);
+                if (newVal != has)
+                {
+                    if (newVal)
+                        editingTemplate.recipeDefNames.Add(recipe.defName);
+                    else
+                        editingTemplate.recipeDefNames.Remove(recipe.defName);
+                    editingTemplate.ResolveReferences();
+                    ColonistModificationMod.Instance.WriteSettings();
+                }
+                ey += 22f;
+            }
+
+            // 胚芽
+            if (xenogermRecipes.Count > 0)
+            {
+                ey += 4f;
+                Widgets.Label(new Rect(0f, ey, ew, 26f), "【胚芽改造】");
+                ey += 28f;
+
+                foreach (var recipe in xenogermRecipes)
+                {
+                    bool has = editingTemplate.recipeDefNames.Contains(recipe.defName);
+                    bool newVal = has;
+                    Rect checkRect = new Rect(5f, ey, ew - 10f, 22f);
+                    Widgets.CheckboxLabeled(checkRect, recipe.label, ref newVal);
+                    if (newVal != has)
+                    {
+                        if (newVal)
+                            editingTemplate.recipeDefNames.Add(recipe.defName);
+                        else
+                            editingTemplate.recipeDefNames.Remove(recipe.defName);
+                        editingTemplate.ResolveReferences();
+                        ColonistModificationMod.Instance.WriteSettings();
+                    }
+                    ey += 22f;
+                }
+            }
+
+            ey += 8f;
+
+            // === 设置区域 ===
+            Widgets.Label(new Rect(0f, ey, ew, 26f), "【参数设置】");
+            ey += 28f;
+
+            // 失败自动重试
+            bool curAutoRetry = editingTemplate.autoRetryOnFailure;
+            Widgets.CheckboxLabeled(new Rect(5f, ey, ew - 10f, 22f), "失败自动重试", ref curAutoRetry);
+            if (curAutoRetry != editingTemplate.autoRetryOnFailure)
+            {
+                editingTemplate.autoRetryOnFailure = curAutoRetry;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+            ey += 24f;
+
+            // 最大重试次数
+            Widgets.Label(new Rect(5f, ey, 120f, 28f), "最大重试次数:");
+            int curRetries = editingTemplate.maxRetriesPerStep;
+            string retBuf = curRetries.ToString();
+            Widgets.TextFieldNumeric(new Rect(130f, ey + 2f, 50f, 24f), ref curRetries, ref retBuf, 0f, 99f);
+            if (curRetries != editingTemplate.maxRetriesPerStep)
+            {
+                editingTemplate.maxRetriesPerStep = curRetries;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+            ey += 28f;
+
+            // 最低财富
+            Widgets.Label(new Rect(5f, ey, 120f, 28f), "最低殖民地财富:");
+            float curWealth = editingTemplate.minColonyWealth;
+            string wealthBuf = curWealth.ToString("F0");
+            Widgets.TextFieldNumeric(new Rect(130f, ey + 2f, 80f, 24f), ref curWealth, ref wealthBuf, 0f, 9999999f);
+            if (!Mathf.Approximately(curWealth, editingTemplate.minColonyWealth))
+            {
+                editingTemplate.minColonyWealth = curWealth;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+            ey += 28f;
+
+            // 需要玩家确认
+            bool curConfirm = editingTemplate.requirePlayerConfirmation;
+            Widgets.CheckboxLabeled(new Rect(5f, ey, ew - 10f, 22f), "需要玩家确认", ref curConfirm);
+            if (curConfirm != editingTemplate.requirePlayerConfirmation)
+            {
+                editingTemplate.requirePlayerConfirmation = curConfirm;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+            ey += 24f;
+
+            // 延迟天数
+            Widgets.Label(new Rect(5f, ey, 120f, 28f), "延迟天数:");
+            int curDelay = editingTemplate.delayDays;
+            string delayBuf = curDelay.ToString();
+            Widgets.TextFieldNumeric(new Rect(130f, ey + 2f, 50f, 24f), ref curDelay, ref delayBuf, 0f, 365f);
+            if (curDelay != editingTemplate.delayDays)
+            {
+                editingTemplate.delayDays = curDelay;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+            ey += 28f;
+
+            // 仅殖民者 / 包含奴隶
+            bool curColonists = editingTemplate.colonistsOnly;
+            Widgets.CheckboxLabeled(new Rect(5f, ey, ew - 10f, 22f), "仅殖民者", ref curColonists);
+            if (curColonists != editingTemplate.colonistsOnly)
+            {
+                editingTemplate.colonistsOnly = curColonists;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+            ey += 24f;
+
+            bool curSlaves = editingTemplate.includeSlaves;
+            Widgets.CheckboxLabeled(new Rect(5f, ey, ew - 10f, 22f), "包含奴隶", ref curSlaves);
+            if (curSlaves != editingTemplate.includeSlaves)
+            {
+                editingTemplate.includeSlaves = curSlaves;
+                ColonistModificationMod.Instance.WriteSettings();
+            }
+            ey += 28f;
+
+            // 药品等级（带图标下拉）
+            Widgets.Label(new Rect(5f, ey, 120f, 28f), "最低药品等级:");
+            DrawMedicineDropdown(new Rect(130f, ey + 2f, 140f, 24f), editingTemplate);
+            ey += 30f;
+
+            Widgets.EndScrollView();
             cachedHeight = y + 40f;
+        }
+
+        /// <summary>
+        /// 药品下拉框，按钮显示当前药品图标+名称，点击弹出 FloatMenu。
+        /// </summary>
+        private void DrawMedicineDropdown(Rect buttonRect, UserTemplate template)
+        {
+            var medDefs = new List<ThingDef> { null, ThingDefOf.MedicineHerbal, ThingDefOf.MedicineIndustrial, ThingDefOf.MedicineUltratech };
+            var medNames = new string[] { "无要求", "草药", "工业药品", "闪耀世界药品" };
+
+            int curIdx = (int)template.minMedicineCategory;
+            if (curIdx < 0 || curIdx >= medDefs.Count) curIdx = 2; // default Industrial
+
+            ThingDef curDef = medDefs[curIdx];
+
+            // 按钮：图标+名称
+            Rect iconRect = new Rect(buttonRect.x, buttonRect.y, 24f, 24f);
+            if (curDef != null)
+                Widgets.ThingIcon(iconRect, curDef);
+            else
+                GUI.DrawTexture(iconRect, BaseContent.GreyTex);
+
+            Rect labelRect = new Rect(buttonRect.x + 26f, buttonRect.y, buttonRect.width - 26f, 24f);
+            if (Widgets.ButtonText(labelRect, medNames[curIdx]))
+            {
+                var options = new List<FloatMenuOption>();
+                for (int i = 0; i < medDefs.Count; i++)
+                {
+                    int idx = i;
+                    ThingDef def = medDefs[i];
+                    options.Add(new FloatMenuOption(medNames[i], () =>
+                    {
+                        template.minMedicineCategory = (MedicineCategory)idx;
+                        ColonistModificationMod.Instance.WriteSettings();
+                    }, def));
+                }
+                Find.WindowStack.Add(new FloatMenu(options));
+            }
         }
 
         // ==================== Action Buttons ====================
 
-        private void DrawActionButtons(float x, float y, Pawn pawn, ColonistModificationTemplateDef template, PawnModificationRecord record)
+        private void DrawActionButtons(float x, float y, Pawn pawn, UserTemplate template, PawnModificationRecord record)
         {
             float buttonWidth = 90f;
             float gap = 6f;
-
             if (record == null) return;
 
             switch (record.status)
@@ -475,7 +596,7 @@ namespace ColonistModification
             Messages.Message($"已确认 {pendingList.Count} 项制式改造，手术将依次开始。", MessageTypeDefOf.NeutralEvent, false);
         }
 
-        private List<Pawn> GetMatchingPawns(ColonistModificationTemplateDef template)
+        private List<Pawn> GetMatchingPawns(UserTemplate template)
         {
             var result = new List<Pawn>();
             foreach (Map map in Find.Maps)

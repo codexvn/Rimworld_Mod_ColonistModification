@@ -57,18 +57,18 @@
         <Compile Include="Bill_ColonistModification.cs" />
         <Compile Include="ColonistModificationDialogUtility.cs" />
         <Compile Include="ColonistModificationManager.cs" />
-        <Compile Include="ColonistModificationTemplateDef.cs" />
+        <Compile Include="ColonistModificationMod.cs" />
+        <Compile Include="ColonistModificationSettings.cs" />
         <Compile Include="ColonistModificationUtility.cs" />
         <Compile Include="Dialog_ColonistModification.cs" />
         <Compile Include="MainButtonWorker_ColonistModification.cs" />
-        <Compile Include="TemplateRuntimeSettings.cs" />
+        <Compile Include="UserTemplate.cs" />
         <Compile Include="Properties\AssemblyInfo.cs"/>
     </ItemGroup>
     <ItemGroup>
       <Content Include="publish\1.6\Assemblies\ColonistModification.dll" />
       <Content Include="publish\1.6\Assemblies\ColonistModification.pdb" />
       <Content Include="publish\About\About.xml" />
-      <Content Include="publish\Defs\ColonistModificationTemplateDef\Templates.xml" />
       <Content Include="publish\Defs\MainButtonDef\MainButtons.xml" />
       <Content Include="publish\Languages\ChineseSimplified\Keyed\ColonistModification_Keys.xml" />
       <Content Include="README.MD" />
