@@ -178,7 +178,8 @@ namespace ColonistModification
             {
                 if (!recipe.targetsBodyPart || recipe.addsHediff == null) continue;
                 if (!typeof(Recipe_InstallArtificialBodyPart).IsAssignableFrom(recipe.workerClass) &&
-                    !typeof(Recipe_InstallNaturalBodyPart).IsAssignableFrom(recipe.workerClass)) continue;
+                    !typeof(Recipe_InstallNaturalBodyPart).IsAssignableFrom(recipe.workerClass) &&
+                    !typeof(Recipe_InstallImplant).IsAssignableFrom(recipe.workerClass)) continue;
 
                 var groupNames = new List<string>();
 
