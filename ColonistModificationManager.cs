@@ -513,9 +513,13 @@ namespace ColonistModification
         {
             // 基因植入：检查 colonist 是否已有目标异种
             if (recipe.defName == "ImplantXenogerm")
-                return !string.IsNullOrEmpty(xenogermTargetDefName)
-                    && pawn.genes?.Xenotype != null
-                    && pawn.genes.Xenotype.defName == xenogermTargetDefName;
+            {
+                if (string.IsNullOrEmpty(xenogermTargetDefName)) return false;
+                if (pawn.genes == null) return false;
+                var targetXeno = DefDatabase<XenotypeDef>.GetNamedSilentFail(xenogermTargetDefName);
+                if (targetXeno == null) return false;
+                return pawn.genes.XenotypeLabel == targetXeno.LabelCap;
+            }
 
             if (recipe.addsHediff == null) return false;
             if (part != null)
