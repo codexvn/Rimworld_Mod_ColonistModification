@@ -170,6 +170,7 @@ namespace ColonistModification
             }
 
             var reservedThings = new HashSet<Thing>();
+            bool confirmationShownThisTick = false;
 
             // === Pass 3: process each pawn ===
             foreach (Map map in Find.Maps)
@@ -232,6 +233,8 @@ namespace ColonistModification
                             {
                                 if (record.status == ModificationStatus.Idle && template.requirePlayerConfirmation)
                                 {
+                                    if (confirmationShownThisTick) break;
+                                    confirmationShownThisTick = true;
                                     record.status = ModificationStatus.PendingConfirmation;
                                     var capturedPawn = pawn;
                                     var capturedTemplate = template;
