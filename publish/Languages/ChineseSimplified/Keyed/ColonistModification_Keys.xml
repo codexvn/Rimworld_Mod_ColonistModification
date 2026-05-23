@@ -1,92 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LanguageData>
-  <!--
-    殖民者制式改造 - 中文简体本地化
-  -->
 
-  <!-- ========== 管理器消息 ========== -->
-
-  <!-- 手术失败自动重试 -->
-  <ColonistModification.SurgeryFailedRetry>殖民者 {0} 的 {1} 手术失败！已自动重新安排。（重试 {2}/{3}）</ColonistModification.SurgeryFailedRetry>
-
-  <!-- 手术失败超过最大重试次数 -->
-  <ColonistModification.SurgeryFailedMaxRetries>殖民者 {0} 的 {1} 手术经过 {2} 次重试仍然失败，跳过此步骤。</ColonistModification.SurgeryFailedMaxRetries>
-
-  <!-- 全部改造完成 -->
-  <ColonistModification.AllStepsCompleted>殖民者 {0} 已完成制式改造模板「{1}」的所有步骤（共 {2} 个步骤）。</ColonistModification.AllStepsCompleted>
-
-  <!-- 单步完成，继续下一步 -->
-  <ColonistModification.StepCompletedNext>殖民者 {0} 的改造模板「{1}」：已完成步骤 {2}/{3}，准备执行下一步。</ColonistModification.StepCompletedNext>
-
-  <!-- 开始改造 -->
-  <ColonistModification.Started>开始对殖民者 {0} 执行制式改造「{1}」，共 {2} 个步骤。</ColonistModification.Started>
-
-  <!-- 改造条件就绪 - 信件标题 -->
-  <ColonistModification.ReadyTitle>殖民者制式改造已就绪</ColonistModification.ReadyTitle>
-
-  <!-- 改造条件就绪 - 信件内容 -->
-  <ColonistModification.ReadyBody>以下改造模板的条件已满足，可以开始手术：
-
-{0}
-
-打开"殖民者改造管理"窗口查看详情并进行操作。</ColonistModification.ReadyBody>
-
-  <!-- 已延迟 -->
-  <ColonistModification.Delayed>已暂缓殖民者 {0} 的改造模板「{1}」，将在 {2} 天后重新提示。</ColonistModification.Delayed>
-
-  <!-- 已忽略 -->
-  <ColonistModification.Dismissed>已忽略殖民者 {0} 的改造模板「{1}」，不再提示。</ColonistModification.Dismissed>
-
-  <!-- 已确认全部 -->
-  <ColonistModification.ConfirmedAll>已确认 {0} 项制式改造，手术将依次开始。</ColonistModification.ConfirmedAll>
-
-  <!-- ========== UI文本 ========== -->
-
-  <!-- 窗口标题 -->
+  <!-- ========== 窗口标题 ========== -->
   <ColonistModification.WindowTitle>殖民者制式改造管理</ColonistModification.WindowTitle>
 
-  <!-- 标签页 -->
+  <!-- ========== 标签页 ========== -->
   <ColonistModification.TabOverview>模板概览</ColonistModification.TabOverview>
-  <ColonistModification.TabPending>待处理列表</ColonistModification.TabPending>
-  <ColonistModification.TabCompleted>已完成记录</ColonistModification.TabCompleted>
+  <ColonistModification.TabPending>未完成</ColonistModification.TabPending>
+  <ColonistModification.TabCompleted>已完成</ColonistModification.TabCompleted>
+  <ColonistModification.TabLog>日志</ColonistModification.TabLog>
+  <ColonistModification.TabEditor>模板编辑</ColonistModification.TabEditor>
 
-  <!-- 按钮文本 -->
-  <ColonistModification.BtnConfirm>✓ 确认</ColonistModification.BtnConfirm>
-  <ColonistModification.BtnDelay>⏱ 稍后</ColonistModification.BtnDelay>
-  <ColonistModification.BtnDismiss>✗ 忽略</ColonistModification.BtnDismiss>
-  <ColonistModification.BtnForceStart>强制开始</ColonistModification.BtnForceStart>
-  <ColonistModification.BtnReactivate>重新激活</ColonistModification.BtnReactivate>
+  <!-- ========== 按钮 ========== -->
   <ColonistModification.BtnRefresh>刷新状态</ColonistModification.BtnRefresh>
-  <ColonistModification.BtnConfirmAll>一键确认全部待处理</ColonistModification.BtnConfirmAll>
+  <ColonistModification.BtnAddAll>一键添加全部可添加</ColonistModification.BtnAddAll>
   <ColonistModification.BtnClose>关闭</ColonistModification.BtnClose>
+  <ColonistModification.BtnAdd>添加</ColonistModification.BtnAdd>
+  <ColonistModification.BtnClearLog>清除日志</ColonistModification.BtnClearLog>
 
-  <!-- 状态文本 -->
-  <ColonistModification.StatusNotEvaluated>未评估</ColonistModification.StatusNotEvaluated>
-  <ColonistModification.StatusConditionsNotMet>条件不满足</ColonistModification.StatusConditionsNotMet>
-  <ColonistModification.StatusPendingConfirmation>⚡ 等待确认</ColonistModification.StatusPendingConfirmation>
-  <ColonistModification.StatusInProgress>▶ 进行中</ColonistModification.StatusInProgress>
-  <ColonistModification.StatusCompleted>✓ 已完成</ColonistModification.StatusCompleted>
-  <ColonistModification.StatusDismissed>✗ 已忽略</ColonistModification.StatusDismissed>
-  <ColonistModification.StatusDelayed>⏱ 已延迟</ColonistModification.StatusDelayed>
+  <!-- ========== 状态文案 ========== -->
+  <ColonistModification.StatusWaiting>等待资源</ColonistModification.StatusWaiting>
+  <ColonistModification.StatusPending>等待确认</ColonistModification.StatusPending>
+  <ColonistModification.StatusCompleted>已完成</ColonistModification.StatusCompleted>
+  <ColonistModification.StatusDismissed>已忽略</ColonistModification.StatusDismissed>
+  <ColonistModification.StatusDelayed>已延迟</ColonistModification.StatusDelayed>
+  <ColonistModification.StatusUnassigned>未分配</ColonistModification.StatusUnassigned>
 
-  <!-- 进度标签 -->
-  <ColonistModification.ProgressLabel>进度: {0}/{1}</ColonistModification.ProgressLabel>
-  <ColonistModification.NextStep>下一步: {0}</ColonistModification.NextStep>
+  <!-- ========== 手术状态 ========== -->
+  <ColonistModification.ConditionsMet>条件满足</ColonistModification.ConditionsMet>
+  <ColonistModification.BillExists>已添加手术单</ColonistModification.BillExists>
 
-  <!-- 无匹配殖民者 -->
-  <ColonistModification.NoMatchingPawns>没有匹配的殖民者。</ColonistModification.NoMatchingPawns>
-  <ColonistModification.NoTemplates>没有定义任何改造模板。请通过XML添加模板定义。</ColonistModification.NoTemplates>
-  <ColonistModification.NoPending>当前没有等待确认的改造项目。</ColonistModification.NoPending>
-  <ColonistModification.NoCompleted>暂无已完成的改造记录。</ColonistModification.NoCompleted>
-  <ColonistModification.ManagerNotInitialized>改造管理器未初始化，请先加载或开始游戏。</ColonistModification.ManagerNotInitialized>
+  <!-- ========== 弹窗 ========== -->
+  <ColonistModification.ConfirmTitle>制式改造确认</ColonistModification.ConfirmTitle>
+  <ColonistModification.ConfirmStart>开始改造</ColonistModification.ConfirmStart>
+  <ColonistModification.ConfirmDelay>稍后提醒</ColonistModification.ConfirmDelay>
+  <ColonistModification.ConfirmDismiss>忽略</ColonistModification.ConfirmDismiss>
 
-  <!-- 延迟剩余时间 -->
-  <ColonistModification.DelayedRemaining>已延迟，约 {0:F1} 天后重新提示</ColonistModification.DelayedRemaining>
+  <!-- ========== 空状态 ========== -->
+  <ColonistModification.NoPawns>无殖民者分配模板。</ColonistModification.NoPawns>
+  <ColonistModification.AllDone>所有手术均已完成。</ColonistModification.AllDone>
+  <ColonistModification.NoLog>暂无记录。</ColonistModification.NoLog>
+  <ColonistModification.NoCompleted>暂无已完成的手术。</ColonistModification.NoCompleted>
+  <ColonistModification.ManagerNotInit>改造管理器未初始化。</ColonistModification.ManagerNotInit>
+  <ColonistModification.ModNotInit>Mod配置未初始化。</ColonistModification.ModNotInit>
 
-  <!-- ========== 模板描述 ========== -->
-  <ColonistModification.TemplateDesc.StandardBionicUpgrade>为殖民者安装基础仿生部件，包括仿生臂、仿生腿和仿生眼。</ColonistModification.TemplateDesc.StandardBionicUpgrade>
-  <ColonistModification.TemplateDesc.AdvancedBionicUpgrade>为殖民者安装高级仿生部件，极大提升工作效率和战斗能力。</ColonistModification.TemplateDesc.AdvancedBionicUpgrade>
-  <ColonistModification.TemplateDesc.StandardXenogermImplant>为所有符合条件的殖民者植入统一的异种基因。</ColonistModification.TemplateDesc.StandardXenogermImplant>
-  <ColonistModification.TemplateDesc.QuickBionicInstall>条件满足后自动为殖民者安装仿生臂，不需要玩家确认。</ColonistModification.TemplateDesc.QuickBionicInstall>
+  <!-- ========== 进度 ========== -->
+  <ColonistModification.ProgressFormat>已完成{0} 未完成{1} (共{2}台手术)</ColonistModification.ProgressFormat>
+  <ColonistModification.LogCount>共 {0} 条记录</ColonistModification.LogCount>
+
+  <!-- ========== 模板编辑 ========== -->
+  <ColonistModification.TemplateList>模板列表:</ColonistModification.TemplateList>
+  <ColonistModification.NewTemplate>+ 新建模板</ColonistModification.NewTemplate>
+  <ColonistModification.TemplateName>名称:</ColonistModification.TemplateName>
+  <ColonistModification.Save>保存</ColonistModification.Save>
+  <ColonistModification.RaceFilter>种族筛选:</ColonistModification.RaceFilter>
+  <ColonistModification.SubTabImplants>植入物</ColonistModification.SubTabImplants>
+  <ColonistModification.SubTabGenes>基因植入</ColonistModification.SubTabGenes>
+  <ColonistModification.EnableGenes>启用基因植入</ColonistModification.EnableGenes>
+  <ColonistModification.TargetXenotype>目标异种:</ColonistModification.TargetXenotype>
+  <ColonistModification.Settings>参数设置</ColonistModification.Settings>
+  <ColonistModification.MinWealth>最低殖民地财富:</ColonistModification.MinWealth>
+  <ColonistModification.RequireConfirm>需要玩家确认</ColonistModification.RequireConfirm>
+  <ColonistModification.DelayDays>延迟天数:</ColonistModification.DelayDays>
+  <ColonistModification.ColonistsOnly>仅殖民者</ColonistModification.ColonistsOnly>
+  <ColonistModification.IncludeSlaves>包含奴隶</ColonistModification.IncludeSlaves>
+
+  <!-- ========== 消息 ========== -->
+  <ColonistModification.MsgSurgeryAdded>开始对殖民者 {0} 执行制式改造 '{1}' 中的 {2}。</ColonistModification.MsgSurgeryAdded>
+  <ColonistModification.MsgAllComplete>殖民者 {0} 已完成制式改造模板 '{1}' 的所有步骤！</ColonistModification.MsgAllComplete>
+  <ColonistModification.MsgDelayed>已暂缓殖民者 {0} 的 '{1}' 改造。</ColonistModification.MsgDelayed>
+  <ColonistModification.MsgDismissed>已忽略殖民者 {0} 的 '{1}' 改造。</ColonistModification.MsgDismissed>
+  <ColonistModification.MsgAddedAll>已为 {0} 位殖民者添加手术。</ColonistModification.MsgAddedAll>
+
+  <!-- ========== 下拉菜单 ========== -->
+  <ColonistModification.Unassign>无 (不改造)</ColonistModification.Unassign>
 
 </LanguageData>
