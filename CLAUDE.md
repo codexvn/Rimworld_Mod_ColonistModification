@@ -23,7 +23,7 @@ ColonistModification（制式改造）是一个 RimWorld mod，为游戏后期�
 
 ## 构建
 
-`dotnet build`，目标 .NET Framework 4.7.2，输出 `publish/1.6/Assemblies/ColonistModification.dll`。所有 DLL 引用设 `<Private>False</Private>` 避免复制游戏 DLL。
+`dotnet build`，目标 net10.0（RimWorld 1.7 / Waylith 运行时），输出 `publish/1.7/Assemblies/ColonistModification.dll`。游戏 Mods 目录以目录链接指向 `publish`，构建完成即完成部署。所有 DLL 引用设 `<Private>False</Private>` 避免复制游戏 DLL。
 
 ## 架构设计
 
@@ -218,7 +218,7 @@ CreateAndAddBill(pawn, template, item)
 
 | 文件 | 用途 |
 |------|------|
-| `ColonistModificationMod.cs` | Mod 入口，`static Instance`，settings 宿主 |
+| `ColonistModificationMod.cs` | Mod 入口，`static Instance`，settings 宿主；内含 `TemplateReferenceBootstrap`——模板 RecipeDef 解析在 StaticConstructorOnStartup 执行（Mod 构造函数运行于 CreateModClasses 阶段，早于 Def 加载，不能查 DefDatabase） |
 | `ColonistModificationSettings.cs` | `List<UserTemplate>`、`EnsureDefaults()`、`ResolveAllReferences()`、`ExposeData` |
 | `UserTemplate.cs` | 模板数据模型 + `ResolveReferences()` + `ExposeData` |
 | `ColonistModificationManager.cs` | GameComponent：tick 循环、缓存刷新、动作处理、模板分配、序列化、日志 |

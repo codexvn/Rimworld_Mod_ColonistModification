@@ -14,7 +14,8 @@ namespace ColonistModification
             Instance = this;
             settings = GetSettings<ColonistModificationSettings>();
             settings.EnsureDefaults();
-            settings.ResolveAllReferences();
+            // 模板的 RecipeDef 解析不在此处做：本构造函数运行于 CreateModClasses 阶段，
+            // 早于 XML Def 加载，任何 defName 都查不到。见 TemplateReferenceBootstrap。
         }
 
         public override void DoSettingsWindowContents(Rect inRect)
@@ -33,6 +34,20 @@ namespace ColonistModification
         public override string SettingsCategory()
         {
             return "制式改造";
+        }
+    }
+
+    /// <summary>
+    /// DefDatabase 就绪后解析各模板的 RecipeDef 引用。
+    /// StaticConstructorOnStartup 在全部 Def 注册并完成交叉引用解析后运行，
+    /// 是读取 DefDatabase 的最早安全时机；ColonistModificationManager 的缓存刷新另有兜底重解析。
+    /// </summary>
+    [StaticConstructorOnStartup]
+    public static class TemplateReferenceBootstrap
+    {
+        static TemplateReferenceBootstrap()
+        {
+            ColonistModificationMod.Instance?.settings.ResolveAllReferences();
         }
     }
 }
