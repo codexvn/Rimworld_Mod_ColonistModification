@@ -18,6 +18,23 @@ namespace ColonistModification
         private string newTemplateName = "";
         private int editorSubTab = 0;
 
+        // 待处理项集合的缓存：随管理器的 CacheVersion 失效，避免窗口每帧重新展开部位并扫描健康状态
+        private int pendingCacheVersion = -1;
+        private readonly List<(Pawn pawn, UserTemplate template, PawnModificationRecord record, List<ColonistModificationManager.PendingRecipeItem> items)> pendingCache
+            = new List<(Pawn, UserTemplate, PawnModificationRecord, List<ColonistModificationManager.PendingRecipeItem>)>();
+
+        // 行级进度缓存：按「殖民者ID|模板ID」缓存总项数与已完成数，随 CacheVersion 失效
+        private readonly Dictionary<string, (int version, int total, int completed)> progressCache
+            = new Dictionary<string, (int, int, int)>();
+
+        // 已完成页的行缓存：记录每项的完成状态，随 CacheVersion 失效，避免每帧扫描健康状态
+        private int completedCacheVersion = -1;
+        private readonly List<(Pawn pawn, UserTemplate template, PawnModificationRecord record, List<(ColonistModificationManager.PendingRecipeItem item, bool done)> rows)> completedCache
+            = new List<(Pawn, UserTemplate, PawnModificationRecord, List<(ColonistModificationManager.PendingRecipeItem, bool)>)>();
+
+        // 可选的身体定义列表：种族配方在游戏内不会变化，会话内只计算一次，避免每帧全量扫描 DefDatabase
+        private static List<BodyDef> cachedBodyDefs;
+
         private ColonistModificationManager Manager => ColonistModificationManager.Instance;
         private List<UserTemplate> AllTemplates
         {
@@ -196,9 +213,18 @@ namespace ColonistModification
                     int completed = 0;
                     if (record != null && assigned != null)
                     {
-                        var allItems = Manager.GetAllRecipeItems(pawn, assigned);
-                        total = allItems.Count;
-                        completed = allItems.Count(item => Manager.IsRecipePartCompleted(pawn, item.recipe, item.part, assigned.xenogermTargetXenotypeDefName));
+                        string progressKey = pawn.thingIDNumber + "|" + assigned.id;
+                        if (!progressCache.TryGetValue(progressKey, out var cachedProgress)
+                            || cachedProgress.version != ColonistModificationManager.CacheVersion)
+                        {
+                            var allItems = Manager.GetAllRecipeItems(pawn, assigned);
+                            cachedProgress = (ColonistModificationManager.CacheVersion,
+                                allItems.Count,
+                                allItems.Count(item => Manager.IsRecipePartCompleted(pawn, item.recipe, item.part, assigned.xenogermTargetXenotypeDefName)));
+                            progressCache[progressKey] = cachedProgress;
+                        }
+                        total = cachedProgress.total;
+                        completed = cachedProgress.completed;
                         statusLine = $"{GetStatusLabel(record, completed >= total)}  已完成{completed} 未完成{total - completed} (共{total}台手术)";
 
                         if (!string.IsNullOrEmpty(record.conditionFailReason))
@@ -233,22 +259,26 @@ namespace ColonistModification
                 return;
             }
 
-            var pendingPawns = new List<(Pawn pawn, UserTemplate template, PawnModificationRecord record, List<ColonistModificationManager.PendingRecipeItem> items)>();
-
-            foreach (Map map in Find.Maps)
+            var pendingPawns = pendingCache;
+            if (pendingCacheVersion != ColonistModificationManager.CacheVersion)
             {
-                if (!map.IsPlayerHome) continue;
-                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                pendingCache.Clear();
+                foreach (Map map in Find.Maps)
                 {
-                    string assignedId = Manager.GetAssignedTemplateId(pawn.thingIDNumber);
-                    var tpl = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
-                    if (tpl == null) continue;
-                    var record = Manager.GetRecord(pawn, tpl);
+                    if (!map.IsPlayerHome) continue;
+                    foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                    {
+                        string assignedId = Manager.GetAssignedTemplateId(pawn.thingIDNumber);
+                        var tpl = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
+                        if (tpl == null) continue;
+                        var record = Manager.GetRecord(pawn, tpl);
 
-                    var items = Manager.GetPendingRecipeItems(pawn, tpl);
-                    if (items.Count > 0)
-                        pendingPawns.Add((pawn, tpl, record, items));
+                        var items = Manager.GetPendingRecipeItems(pawn, tpl);
+                        if (items.Count > 0)
+                            pendingCache.Add((pawn, tpl, record, items));
+                    }
                 }
+                pendingCacheVersion = ColonistModificationManager.CacheVersion;
             }
 
             if (pendingPawns.Count == 0)
@@ -318,19 +348,27 @@ namespace ColonistModification
                 return;
             }
 
-            var allPawns = new List<(Pawn pawn, UserTemplate template, PawnModificationRecord record)>();
-
-            foreach (Map map in Find.Maps)
+            var allPawns = completedCache;
+            if (completedCacheVersion != ColonistModificationManager.CacheVersion)
             {
-                if (!map.IsPlayerHome) continue;
-                foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                completedCache.Clear();
+                foreach (Map map in Find.Maps)
                 {
-                    string assignedId = Manager.GetAssignedTemplateId(pawn.thingIDNumber);
-                    var tpl = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
-                    if (tpl == null) continue;
-                    var record = Manager.GetRecord(pawn, tpl);
-                    allPawns.Add((pawn, tpl, record));
+                    if (!map.IsPlayerHome) continue;
+                    foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
+                    {
+                        string assignedId = Manager.GetAssignedTemplateId(pawn.thingIDNumber);
+                        var tpl = assignedId != null ? AllTemplates.FirstOrDefault(t => t.id == assignedId) : null;
+                        if (tpl == null) continue;
+                        var record = Manager.GetRecord(pawn, tpl);
+
+                        var rows = new List<(ColonistModificationManager.PendingRecipeItem, bool)>();
+                        foreach (var item in Manager.GetAllRecipeItems(pawn, tpl))
+                            rows.Add((item, Manager.IsRecipePartCompleted(pawn, item.recipe, item.part, tpl.xenogermTargetXenotypeDefName)));
+                        completedCache.Add((pawn, tpl, record, rows));
+                    }
                 }
+                completedCacheVersion = ColonistModificationManager.CacheVersion;
             }
 
             if (allPawns.Count == 0)
@@ -344,15 +382,13 @@ namespace ColonistModification
             float w = rect.width;
             float rowH = 22f;
 
-            foreach (var (pawn, template, record) in allPawns)
+            foreach (var (pawn, template, record, rows) in allPawns)
             {
                 Widgets.Label(new Rect(0f, y, w, 22f), $"<b>{pawn.LabelShort}</b>  —  {template.name}");
                 y += 24f;
 
-                var allItems = Manager.GetAllRecipeItems(pawn, template);
-                foreach (var item in allItems)
+                foreach (var (item, done) in rows)
                 {
-                    bool done = Manager.IsRecipePartCompleted(pawn, item.recipe, item.part, template.xenogermTargetXenotypeDefName);
                     if (done)
                     {
                         GUI.color = new Color(0.3f, 0.8f, 0.3f);
@@ -438,7 +474,7 @@ namespace ColonistModification
             var settings = ColonistModificationMod.Instance?.settings;
             if (settings == null)
             {
-                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "Mod配置未初始化。");
+                LabelWithHeight(new Rect(0f, 0f, rect.width, 30f), "Mod 配置未初始化。");
                 return;
             }
 
@@ -490,7 +526,7 @@ namespace ColonistModification
             var editTemplate = templates.FirstOrDefault(t => t.id == editingTemplateId);
             if (editTemplate == null)
             {
-                LabelWithHeight(new Rect(rightX, ry, rw, 30f), "← 选择或新建一个模板开始编辑");
+                LabelWithHeight(new Rect(rightX, ry, rw, 30f), "请先选择或新建一个模板开始编辑。");
                 cachedHeight = Mathf.Max(leftEndY, ry + 30f) + 40f;
                 return;
             }
@@ -505,12 +541,15 @@ namespace ColonistModification
             }
             ry += 34f;
 
-            // 种族筛选：只列出可手术的人类like种族（有身体部位才可手术）
-            // 只列出手术菜单中有"添加清单"按钮的种族（recipeUsers中包含该种族的才算可手术）
-            var bodyDefs = DefDatabase<ThingDef>.AllDefs
-                .Where(t => t.race != null && t.race.Humanlike && t.race.body != null
-                    && t.AllRecipes.Any(r => r.IsSurgery))
-                .Select(t => t.race.body).Distinct().ToList();
+            // 种族筛选：只列出存在手术配方的类人种族，只有这样的种族才有可选择的植入部位
+            if (cachedBodyDefs == null)
+            {
+                cachedBodyDefs = DefDatabase<ThingDef>.AllDefs
+                    .Where(t => t.race != null && t.race.Humanlike && t.race.body != null
+                        && t.AllRecipes.Any(r => r.IsSurgery))
+                    .Select(t => t.race.body).Distinct().ToList();
+            }
+            var bodyDefs = cachedBodyDefs;
             BodyDef selBody = bodyDefs.FirstOrDefault(b => b.defName == (editTemplate.targetBodyDefName ?? "Human")) ?? BodyDefOf.Human;
             Widgets.Label(new Rect(rightX, ry, 80f, 26f), "种族筛选:");
             if (Widgets.ButtonText(new Rect(rightX + 85f, ry, 150f, 26f), selBody.LabelCap))
@@ -612,7 +651,7 @@ namespace ColonistModification
                     ry += 30f;
 
                     GUI.color = Color.grey;
-                    Widgets.Label(new Rect(rightX + 15f, ry, rw - 15f, 20f), "手术时将查找地图上匹配的异种胚，需提前在基因装配器制作。");
+                    Widgets.Label(new Rect(rightX + 15f, ry, rw - 15f, 20f), "手术时会查找地图上匹配的异种胚芽，需要提前在基因装配器中制作。");
                     GUI.color = Color.white;
                     ry += 22f;
                 }

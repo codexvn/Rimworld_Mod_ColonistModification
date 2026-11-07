@@ -33,7 +33,7 @@ namespace ColonistModification
                 return (false, "手术当前不可用");
 
             if (!HasAvailableSurgeon(recipe, map))
-                return (false, "无可用医生（需满足技能且非倒地/失控）");
+                return (false, "无可用医生（需要医生技能达标，且未倒地、未精神失控）");
 
             if (!HasRequiredMedicine(recipe, map, minMedicineCategory))
                 return (false, $"缺少药品 (需要: {minMedicineCategory} 或更高)");
@@ -118,9 +118,22 @@ namespace ColonistModification
             return MedicineCategory.None;
         }
 
+        // 材料余量按「地图 × 配方」做时间窗缓存。该项检查的成本集中在全图物品表的线性扫描，
+        // 而周期检查每 250 tick 执行一次；将扫描结果缓存 2500 tick（约 1 游戏小时）即可消除尖峰。
+        // 材料余量的变化最多延迟一个缓存窗口才被感知，对「何时能添加手术单」的判断没有实质影响。
+        private static readonly Dictionary<string, (int tick, bool hasMaterials, string missing)> materialCheckCache
+            = new Dictionary<string, (int, bool, string)>();
+        private const int MaterialCacheTicks = 2500;
+
         public static (bool hasMaterials, string missingInfo) HasRequiredMaterials(RecipeDef recipe, Map map)
         {
             if (recipe.ingredients == null || recipe.ingredients.Count == 0) return (true, null);
+
+            string cacheKey = map.uniqueID + "|" + recipe.defName;
+            int now = Find.TickManager.TicksGame;
+            if (materialCheckCache.TryGetValue(cacheKey, out var cached) && now - cached.tick < MaterialCacheTicks)
+                return (cached.hasMaterials, cached.missing);
+
             foreach (var ingredient in recipe.ingredients)
             {
                 if (ingredient.filter.Allows(ThingDefOf.MedicineHerbal) ||
@@ -130,8 +143,13 @@ namespace ColonistModification
 
                 var (hasEnough, missingInfo) = HasEnoughIngredient(ingredient, map);
                 if (!hasEnough)
-                    return (false, missingInfo);
+                {
+                    var result = (false, missingInfo);
+                    materialCheckCache[cacheKey] = (now, result.Item1, result.Item2);
+                    return result;
+                }
             }
+            materialCheckCache[cacheKey] = (now, true, null);
             return (true, null);
         }
 

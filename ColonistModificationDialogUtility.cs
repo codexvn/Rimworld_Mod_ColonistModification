@@ -5,7 +5,7 @@ namespace ColonistModification
 {
     /// <summary>
     /// 殖民者制式改造的UI工具类
-    /// 提供打开管理窗口等方法
+    /// 提供打开改造管理窗口的统一入口
     /// </summary>
     public static class ColonistModificationDialogUtility
     {

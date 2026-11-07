@@ -80,6 +80,13 @@ namespace ColonistModification
         private const int CheckIntervalTicks = 250;
         private const int MaxConcurrentSurgeries = 1;
 
+        /// <summary>界面数据版本号：每次周期刷新结束时递增，改造窗口据此判断行级缓存是否失效。</summary>
+        public static int CacheVersion;
+
+        // 上一次条件判定的结果（键为「殖民者ID|项Key」）：检查日志仅在结果发生变化时记录，
+        // 避免周期性检查把同一条目反复写入日志
+        private readonly Dictionary<string, bool> lastCheckResults = new Dictionary<string, bool>();
+
         private static readonly List<UserTemplate> EmptyTemplateList = new List<UserTemplate>();
 
         private List<UserTemplate> AllTemplates =>
@@ -145,8 +152,8 @@ namespace ColonistModification
         }
 
         /// <summary>
-        /// tick 循环入口：刷新缓存 → 基于缓存处理动作（弹窗/加手术）。
-        /// 每 tick 最多执行一个动作：确认窗一个，或加手术 MaxConcurrentSurgeries 台。
+        /// 周期检查的入口：先刷新全部条件缓存，再基于缓存结果处理动作（弹出确认窗或添加手术）。
+        /// 每个周期最多执行一个动作：要么弹出一个确认窗，要么添加至多 MaxConcurrentSurgeries 台手术。
         /// </summary>
         private void CheckAllTemplates(int currentTick, bool actOnResults = true)
         {
@@ -160,6 +167,8 @@ namespace ColonistModification
 
             // 基于缓存处理动作
             var templates = AllTemplates.ToList();
+            var tplById = new Dictionary<string, UserTemplate>();
+            foreach (var t in templates) tplById[t.id] = t;
             int activeSurgeries = 0;
 
             // 统计当前已有手术单（仅限分配了模版的殖民者）
@@ -168,8 +177,9 @@ namespace ColonistModification
                 if (!map.IsPlayerHome) continue;
                 foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners)
                 {
-                    var assignedTpl = GetAssignedTemplateId(pawn.thingIDNumber) != null
-                        ? templates.FirstOrDefault(t => t.id == GetAssignedTemplateId(pawn.thingIDNumber))
+                    var assignedIdForCount = GetAssignedTemplateId(pawn.thingIDNumber);
+                    var assignedTpl = assignedIdForCount != null && tplById.TryGetValue(assignedIdForCount, out var foundTpl)
+                        ? foundTpl
                         : null;
                     if (assignedTpl == null) continue;
                     var recipeDefs = new HashSet<RecipeDef>(assignedTpl.resolvedRecipes);
@@ -204,7 +214,9 @@ namespace ColonistModification
                 foreach (Pawn pawn in map.mapPawns.FreeColonistsAndPrisoners.ToList())
                 {
                     var assignedId = GetAssignedTemplateId(pawn.thingIDNumber);
-                    var template = assignedId != null ? templates.FirstOrDefault(t => t.id == assignedId) : null;
+                    var template = assignedId != null && tplById.TryGetValue(assignedId, out var assignedTemplate)
+                        ? assignedTemplate
+                        : null;
                     if (template == null) continue;
                     if (template.StepCount == 0) continue;
 
@@ -282,13 +294,15 @@ namespace ColonistModification
             }
         }
 
-        /// <summary>recipe+部位展开后的单条待处理项</summary>
+        /// <summary>由配方与可用部位展开后的单条待处理项；Key 与 Label 在首次访问后缓存，避免每次访问都重新拼接字符串。</summary>
     public class PendingRecipeItem
         {
             public RecipeDef recipe;
             public BodyPartRecord part;
-            public string Label => part != null ? $"{recipe.label} ({part.LabelCap})" : recipe.label;
-            public string Key => part != null ? $"{recipe.defName}|{part.LabelCap}" : recipe.defName;
+            private string _label;
+            private string _key;
+            public string Label => _label ??= (part != null ? $"{recipe.label} ({part.LabelCap})" : recipe.label);
+            public string Key => _key ??= (part != null ? $"{recipe.defName}|{part.LabelCap}" : recipe.defName);
         }
 
         /// <summary>将模板的 recipe 按殖民者可用部位展开，排除已完成项，返回未完成的 (recipe+部位) 列表</summary>
@@ -420,8 +434,9 @@ namespace ColonistModification
         {
             if (!(ColonistModificationMod.Instance?.settings?.enableDetailedLogging ?? true)) return;
             surgeryLog.Add(entry);
-            while (surgeryLog.Count > MaxLogEntries)
-                surgeryLog.RemoveAt(0);
+            // 超出上限时一次性批量移除，替代逐条 RemoveAt(0) 的重复移位
+            if (surgeryLog.Count > MaxLogEntries)
+                surgeryLog.RemoveRange(0, surgeryLog.Count - MaxLogEntries);
         }
 
         public List<SurgeryLogEntry> GetSurgeryLog()
@@ -553,6 +568,8 @@ namespace ColonistModification
 
             var templateList = settings?.templates != null
                 ? settings.templates.ToList() : new List<UserTemplate>();
+            var tplById = new Dictionary<string, UserTemplate>();
+            foreach (var t in templateList) tplById[t.id] = t;
 
             foreach (Map map in Find.Maps)
             {
@@ -562,8 +579,7 @@ namespace ColonistModification
                     var assignedId = GetAssignedTemplateId(pawn.thingIDNumber);
                     if (assignedId == null) continue;
 
-                    var template = templateList.FirstOrDefault(t => t.id == assignedId);
-                    if (template == null || template.StepCount == 0) continue;
+                    if (!tplById.TryGetValue(assignedId, out var template) || template.StepCount == 0) continue;
 
                     var record = GetOrCreateRecord(pawn, template);
                     var pendingRecipes = GetPendingRecipes(pawn, template, record);
@@ -579,20 +595,27 @@ namespace ColonistModification
                         if (!can && !string.IsNullOrEmpty(reason))
                             record.conditionFailReason += $"· {item.Label}: {reason}\n";
 
-                        AddLog(new SurgeryLogEntry
+                        // 检查日志仅在判定结果发生变化时写入，避免周期性检查反复记录同一条目
+                        string resultKey = pawn.thingIDNumber + "|" + item.Key;
+                        if (!lastCheckResults.TryGetValue(resultKey, out var previousResult) || previousResult != can)
                         {
-                            pawnName = pawn.LabelShort,
-                            recipeLabel = item.Label,
-                            templateName = template.name,
-                            tickCreated = Find.TickManager.TicksGame,
-                            isCheckEntry = true,
-                            checkPassed = can,
-                            checkResult = can ? "条件满足" : (reason ?? "条件不满足")
-                        });
+                            lastCheckResults[resultKey] = can;
+                            AddLog(new SurgeryLogEntry
+                            {
+                                pawnName = pawn.LabelShort,
+                                recipeLabel = item.Label,
+                                templateName = template.name,
+                                tickCreated = Find.TickManager.TicksGame,
+                                isCheckEntry = true,
+                                checkPassed = can,
+                                checkResult = can ? "条件满足" : (reason ?? "条件不满足")
+                            });
+                        }
                     }
                 }
             }
 
+            CacheVersion++;
         }
 
         public void ForceCheckNow()

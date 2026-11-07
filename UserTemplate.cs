@@ -6,7 +6,7 @@ namespace ColonistModification
 {
     /// <summary>
     /// 玩家自定义的改造模板，保存在 ModSettings 中跨存档持久化。
-    /// 替换原有的 XML-based ColonistModificationTemplateDef。
+    /// 替代原先基于 XML 定义的 ColonistModificationTemplateDef。
     /// </summary>
     public class UserTemplate : IExposable
     {
@@ -70,7 +70,7 @@ namespace ColonistModification
             Scribe_Values.Look(ref delayDays, "delayDays", 3);
             Scribe_Values.Look(ref minMedicineCategory, "minMedicineCategory", MedicineCategory.Industrial);
 
-            // 反序列化后确保集合字段不为null（Scribe绕过字段初始化器）
+            // 反序列化后确保集合字段不为null（Scribe 会绕过字段初始化器）。
             if (recipeDefNames == null) recipeDefNames = new List<string>();
         }
     }
